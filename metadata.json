@@ -1,0 +1,7 @@
+{
+  "name": "VoxAura - Minimalist Voxel Animator",
+  "description": "A high-end voxel animation suite allowing users to import .vox models, rig them for fluid motion, adjust cinematic lighting, and export high-detailed stylized videos using Gemini Veo.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
