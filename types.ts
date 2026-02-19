@@ -46,6 +46,14 @@ export enum InterpolationMode {
   BEZIER = 'BEZIER',
 }
 
+export interface SceneConfig {
+  exposure: number;
+  bloom: number;
+  lightIntensity: number;
+  lightColor: string;
+  backgroundColor: string;
+}
+
 export interface Keyframe {
   time: number;
   interpolation: InterpolationMode;
@@ -53,14 +61,7 @@ export interface Keyframe {
     position: [number, number, number];
     rotation: [number, number, number];
   }>;
-}
-
-export interface SceneConfig {
-  exposure: number;
-  bloom: number;
-  lightIntensity: number;
-  lightColor: string;
-  backgroundColor: string;
+  environment: SceneConfig;
 }
 
 export interface CameraConfig {
@@ -90,7 +91,7 @@ export interface AppState {
   currentTime: number;
   isPlaying: boolean;
   selectedPart: RigPart | null;
-  config: SceneConfig;
+  config: SceneConfig; // This acts as the "active" or "interpolated" config
   gizmoMode: GizmoMode;
   presets: Preset[];
   rigTemplate: RigTemplate;

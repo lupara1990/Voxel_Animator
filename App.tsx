@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera, ContactShadows, Environment, TransformControls } from '@react-three/drei';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
+import { OrbitControls, PerspectiveCamera, ContactShadows, Environment, TransformControls, Bloom, EffectComposer } from '@react-three/drei';
 import * as THREE from 'three';
-import { AppState, RigPart, VoxelData, Keyframe, GizmoMode, InterpolationMode, Preset, CameraConfig, RigTemplate, SavedCamera } from './types';
+import { AppState, RigPart, VoxelData, Keyframe, GizmoMode, InterpolationMode, Preset, CameraConfig, RigTemplate, SavedCamera, SceneConfig } from './types';
 import { DEFAULT_CONFIG, INITIAL_TRANSFORMS, DEFAULT_PRESETS } from './constants';
 import { parseVoxFile, reprocessVoxels } from './services/voxParser';
 import { generateVoxAnimationVideo } from './services/geminiService';
@@ -23,6 +23,11 @@ const getHistorySnapshot = (state: AppState) => ({
   savedCameras: JSON.parse(JSON.stringify(state.savedCameras)),
 });
 
+// Ease In Out Cubic helper for interpolation
+const easeInOutCubic = (t: number): number => {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+};
+
 const SceneContent: React.FC<{ 
   state: AppState, 
   onGizmoChange: (part: RigPart, position: [number, number, number], rotation: [number, number, number]) => void,
@@ -30,12 +35,48 @@ const SceneContent: React.FC<{
   onGizmoEnd: () => void,
   cameraTrigger: number,
   pendingCamera: CameraConfig | null,
-  cameraStateRef: React.MutableRefObject<CameraConfig | null>
-}> = ({ state, onGizmoChange, onGizmoStart, onGizmoEnd, cameraTrigger, pendingCamera, cameraStateRef }) => {
+  cameraStateRef: React.MutableRefObject<CameraConfig | null>,
+  onUpdateActiveConfig: (config: SceneConfig) => void
+}> = ({ state, onGizmoChange, onGizmoStart, onGizmoEnd, cameraTrigger, pendingCamera, cameraStateRef, onUpdateActiveConfig }) => {
   const { scene, camera } = useThree();
   const transformRef = useRef<any>(null);
   const controlsRef = useRef<any>(null);
   const selectedObject = useRef<THREE.Object3D | null>(null);
+
+  // Lighting & Environment Interpolation
+  useFrame(() => {
+    if (state.keyframes.length === 0) return;
+    
+    let prev = state.keyframes[0];
+    let next = state.keyframes[0];
+    for (let i = 0; i < state.keyframes.length; i++) {
+      if (state.keyframes[i].time <= state.currentTime) prev = state.keyframes[i];
+      if (state.keyframes[i].time >= state.currentTime) {
+        next = state.keyframes[i];
+        break;
+      }
+    }
+
+    let t = next.time === prev.time ? 0 : (state.currentTime - prev.time) / (next.time - prev.time);
+    if (prev.interpolation === InterpolationMode.STEP) t = 0;
+    else if (prev.interpolation === InterpolationMode.BEZIER) t = easeInOutCubic(t);
+
+    const lerpColor = (c1: string, c2: string, alpha: number) => {
+      const col1 = new THREE.Color(c1);
+      const col2 = new THREE.Color(c2);
+      return `#${col1.lerp(col2, alpha).getHexString()}`;
+    };
+
+    const interpConfig: SceneConfig = {
+      exposure: THREE.MathUtils.lerp(prev.environment.exposure, next.environment.exposure, t),
+      bloom: THREE.MathUtils.lerp(prev.environment.bloom, next.environment.bloom, t),
+      lightIntensity: THREE.MathUtils.lerp(prev.environment.lightIntensity, next.environment.lightIntensity, t),
+      lightColor: lerpColor(prev.environment.lightColor, next.environment.lightColor, t),
+      backgroundColor: lerpColor(prev.environment.backgroundColor, next.environment.backgroundColor, t),
+    };
+
+    onUpdateActiveConfig(interpConfig);
+  });
 
   useEffect(() => {
     if (state.selectedPart) {
@@ -107,7 +148,7 @@ const SceneContent: React.FC<{
         onChange={handleControlsChange}
       />
       <color attach="background" args={[state.config.backgroundColor]} />
-      <ambientLight intensity={0.4} />
+      <ambientLight intensity={0.2} />
       <spotLight 
         position={[50, 100, 50]} 
         angle={0.15} 
@@ -115,7 +156,11 @@ const SceneContent: React.FC<{
         intensity={state.config.lightIntensity} 
         castShadow 
       />
-      <directionalLight position={[-10, 20, 10]} intensity={state.config.lightIntensity * 0.5} color={state.config.lightColor} />
+      <directionalLight 
+        position={[-10, 20, 10]} 
+        intensity={state.config.lightIntensity * 0.5} 
+        color={state.config.lightColor} 
+      />
       <Environment preset="city" />
       {state.voxels.length > 0 && <VoxelModel voxels={state.voxels} keyframes={state.keyframes} currentTime={state.currentTime} />}
       <ContactShadows position={[0, -5, 0]} opacity={0.6} scale={100} blur={2.5} far={10} />
@@ -133,7 +178,7 @@ const App: React.FC = () => {
 
   const [state, setState] = useState<AppState>({
     voxels: [],
-    keyframes: [{ time: 0, interpolation: InterpolationMode.LINEAR, transforms: INITIAL_TRANSFORMS }],
+    keyframes: [{ time: 0, interpolation: InterpolationMode.LINEAR, transforms: INITIAL_TRANSFORMS, environment: DEFAULT_CONFIG }],
     currentTime: 0,
     isPlaying: false,
     selectedPart: null,
@@ -199,7 +244,7 @@ const App: React.FC = () => {
         voxels: parsedVoxels, 
         currentTime: 0, 
         selectedPart: null,
-        keyframes: [{ time: 0, interpolation: InterpolationMode.LINEAR, transforms: INITIAL_TRANSFORMS }] 
+        keyframes: [{ time: 0, interpolation: InterpolationMode.LINEAR, transforms: INITIAL_TRANSFORMS, environment: DEFAULT_CONFIG }] 
       }));
     } catch (err) {
       alert("Error: " + err.message);
@@ -218,17 +263,48 @@ const App: React.FC = () => {
     }));
   };
 
-  const handleUpdateConfig = (updates: Partial<typeof DEFAULT_CONFIG>) => setState(prev => ({ ...prev, config: { ...prev.config, ...updates } }));
+  const handleUpdateConfig = (updates: Partial<typeof DEFAULT_CONFIG>) => {
+    setState(prev => {
+      let newKeyframes = [...prev.keyframes];
+      let currentKey: Keyframe;
+
+      if (prev.autoKeyframe) {
+        const existingIdx = newKeyframes.findIndex(k => Math.abs(k.time - prev.currentTime) < 0.001);
+        if (existingIdx !== -1) {
+          currentKey = { ...newKeyframes[existingIdx] };
+          newKeyframes[existingIdx] = currentKey;
+        } else {
+          const prevKey = newKeyframes.reduce((pk, ck) => (ck.time <= prev.currentTime) ? ck : pk, newKeyframes[0]);
+          currentKey = JSON.parse(JSON.stringify(prevKey));
+          currentKey.time = prev.currentTime;
+          newKeyframes.push(currentKey);
+          newKeyframes.sort((a, b) => a.time - b.time);
+        }
+      } else {
+        currentKey = prev.keyframes.reduce((pk, ck) => (ck.time <= prev.currentTime) ? ck : pk, prev.keyframes[0]);
+      }
+
+      currentKey.environment = { ...currentKey.environment, ...updates };
+
+      if (!prev.autoKeyframe) {
+        newKeyframes = prev.keyframes.map(k => k.time === currentKey.time ? currentKey : k);
+      }
+
+      return { ...prev, keyframes: newKeyframes, config: { ...prev.config, ...updates } };
+    });
+  };
 
   const handleAddKeyframe = () => {
     pushToHistory(state);
     setState(prev => {
       const existing = prev.keyframes.find(k => Math.abs(k.time - prev.currentTime) < 0.01);
       if (existing) return prev;
+      const prevKey = prev.keyframes.reduce((pk, ck) => (ck.time <= prev.currentTime) ? ck : pk, prev.keyframes[0]);
       const newKeyframe: Keyframe = {
         time: prev.currentTime,
-        interpolation: prev.keyframes[prev.keyframes.length - 1].interpolation,
-        transforms: JSON.parse(JSON.stringify(prev.keyframes[prev.keyframes.length-1].transforms))
+        interpolation: prevKey.interpolation,
+        transforms: JSON.parse(JSON.stringify(prevKey.transforms)),
+        environment: JSON.parse(JSON.stringify(prevKey.environment))
       };
       return { ...prev, keyframes: [...prev.keyframes, newKeyframe].sort((a, b) => a.time - b.time) };
     });
@@ -402,13 +478,26 @@ const App: React.FC = () => {
             cameraTrigger={cameraTrigger} 
             pendingCamera={pendingCamera}
             cameraStateRef={cameraStateRef}
+            onUpdateActiveConfig={(c) => setState(p => ({ ...p, config: c }))}
           />
         </Canvas>
         {exportedVideoUrl && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-12">
-            <div className="relative max-w-5xl w-full bg-neutral-900 rounded-2xl overflow-hidden shadow-2xl">
-              <button onClick={() => setExportedVideoUrl(null)} className="absolute top-4 right-4 p-2 bg-black/50 rounded-full z-10"><i className="fas fa-times"></i></button>
+            <div className="relative max-w-5xl w-full bg-neutral-900 rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+              <button onClick={() => setExportedVideoUrl(null)} className="absolute top-4 right-4 p-2 bg-black/50 rounded-full z-10 hover:bg-white/20 transition-colors"><i className="fas fa-times"></i></button>
               <video src={exportedVideoUrl} controls autoPlay loop className="w-full aspect-video bg-black" />
+              <div className="p-6 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded bg-indigo-500/20 flex items-center justify-center text-indigo-400">
+                    <i className="fas fa-clapperboard"></i>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold">Export Complete</h3>
+                    <p className="text-xs text-white/40">Powered by Gemini Veo 3.1</p>
+                  </div>
+                </div>
+                <a href={exportedVideoUrl} download="voxaura-render.mp4" className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-bold uppercase tracking-widest transition-all">Download MP4</a>
+              </div>
             </div>
           </div>
         )}

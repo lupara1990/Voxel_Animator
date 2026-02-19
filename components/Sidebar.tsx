@@ -43,7 +43,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div className="p-6 border-b border-white/5 flex justify-between items-center">
         <div>
           <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">VOXAURA</h1>
-          <p className="text-[10px] text-white/30 tracking-[0.2em] uppercase mt-1">Voxel Motion Studio</p>
+          <p className="text-[10px] text-white/30 tracking-[0.2em] uppercase mt-1 font-sans">Voxel Motion Studio</p>
         </div>
         <div className="flex gap-2">
           <button onClick={onUndo} disabled={!canUndo} className={`p-2 rounded-lg transition-colors border border-white/5 ${canUndo ? 'bg-white/5 text-white/80 hover:bg-white/10' : 'text-white/10 cursor-not-allowed'}`} title="Undo (Ctrl+Z)"><i className="fas fa-undo text-xs"></i></button>
@@ -53,7 +53,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       <div className="p-6 space-y-8">
         <section>
-          <label className="text-[11px] font-semibold text-white/40 uppercase tracking-widest block mb-3">Model Import</label>
+          <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-3">Model Import</label>
           <div className="relative group">
             <input type="file" accept=".vox" onChange={onFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
             <div className="flex items-center gap-3 p-4 bg-white/5 border border-white/10 rounded-xl group-hover:bg-white/10 group-hover:border-indigo-500/50 transition-all duration-300">
@@ -64,13 +64,13 @@ const Sidebar: React.FC<SidebarProps> = ({
         </section>
 
         <section>
-          <label className="text-[11px] font-semibold text-white/40 uppercase tracking-widest block mb-3">Rigging Template</label>
+          <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-3">Rigging Template</label>
           <div className="flex bg-white/5 p-1 rounded-xl border border-white/10">
             {Object.values(RigTemplate).map(template => (
               <button
                 key={template}
                 onClick={() => onUpdateRigTemplate(template)}
-                className={`flex-1 py-2 rounded-lg text-[9px] font-bold transition-all ${state.rigTemplate === template ? 'bg-indigo-600 text-white shadow-lg' : 'text-white/40 hover:text-white/60'}`}
+                className={`flex-1 py-2 rounded-lg text-[9px] font-bold transition-all ${state.rigTemplate === template ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-white/40 hover:text-white/60'}`}
               >
                 {template}
               </button>
@@ -80,7 +80,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         <section>
           <div className="flex justify-between items-end mb-3">
-            <label className="text-[11px] font-semibold text-white/40 uppercase tracking-widest">Rigging Controls</label>
+            <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest">Motion Rig</label>
             <div className="flex gap-2 items-center">
               <button
                 onClick={() => onUpdateAutoKeyframe(!state.autoKeyframe)}
@@ -121,7 +121,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <span className="text-[10px] text-white/40 uppercase block mb-2">{type}</span>
                     {['X', 'Y', 'Z'].map((axis, i) => (
                       <div key={axis} className="flex items-center gap-3 mb-2">
-                        <span className="text-[10px] font-bold text-white/30 w-4">{axis}</span>
+                        <span className="text-[10px] font-bold text-white/30 w-4 font-mono">{axis}</span>
                         <input type="range" min={type === 'position' ? -20 : -Math.PI} max={type === 'position' ? 20 : Math.PI} step={0.01} onMouseDown={onTransformInteractionStart} value={selectedTransform[type as 'position' | 'rotation'][i]} onChange={(e) => onUpdateTransform(state.selectedPart!, type as any, i, parseFloat(e.target.value))} className="flex-1 accent-indigo-500 h-1 bg-white/10 rounded-full appearance-none cursor-pointer" />
                         <span className="text-[10px] font-mono text-white/50 w-8 text-right">{selectedTransform[type as 'position' | 'rotation'][i].toFixed(1)}</span>
                       </div>
@@ -133,10 +133,54 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
         </section>
 
-        {/* Cameras Section */}
+        {/* Environment Animation Section */}
+        <section>
+          <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-4">Environment Aesthetic</label>
+          <div className="space-y-5 p-4 bg-white/5 rounded-xl border border-white/5">
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="text-[10px] text-white/40 uppercase tracking-tighter">Light Intensity</span>
+                <span className="text-[10px] font-mono text-indigo-400">{state.config.lightIntensity.toFixed(1)}</span>
+              </div>
+              <input 
+                type="range" 
+                min="0" max="5" step="0.1"
+                onMouseDown={onConfigInteractionStart}
+                value={state.config.lightIntensity}
+                onChange={(e) => onUpdateConfig({ lightIntensity: parseFloat(e.target.value) })}
+                className="w-full h-1 bg-white/10 rounded-full appearance-none accent-indigo-500"
+              />
+            </div>
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="text-[10px] text-white/40 uppercase tracking-tighter">Color Temperature</span>
+                <div className="w-3 h-3 rounded-full border border-white/20" style={{ backgroundColor: state.config.lightColor }}></div>
+              </div>
+              <input 
+                type="color" 
+                value={state.config.lightColor}
+                onChange={(e) => onUpdateConfig({ lightColor: e.target.value })}
+                className="w-full h-8 bg-transparent cursor-pointer rounded overflow-hidden border border-white/10"
+              />
+            </div>
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="text-[10px] text-white/40 uppercase tracking-tighter">Atmosphere</span>
+                <span className="text-[10px] font-mono text-indigo-400">{state.config.backgroundColor}</span>
+              </div>
+              <input 
+                type="color" 
+                value={state.config.backgroundColor}
+                onChange={(e) => onUpdateConfig({ backgroundColor: e.target.value })}
+                className="w-full h-8 bg-transparent cursor-pointer rounded overflow-hidden border border-white/10"
+              />
+            </div>
+          </div>
+        </section>
+
         <section>
           <div className="flex justify-between items-center mb-3">
-            <label className="text-[11px] font-semibold text-white/40 uppercase tracking-widest block">Cameras</label>
+            <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block">Cameras</label>
             <button onClick={onSaveCamera} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-wider transition-colors">+ Add View</button>
           </div>
           <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
@@ -165,17 +209,17 @@ const Sidebar: React.FC<SidebarProps> = ({
         </section>
 
         <section>
-          <label className="text-[11px] font-semibold text-white/40 uppercase tracking-widest block mb-3">Keyframe Interpolation</label>
+          <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-3">Interpolation Mode</label>
           <div className="flex gap-2">
             {[InterpolationMode.LINEAR, InterpolationMode.STEP, InterpolationMode.BEZIER].map(mode => (
-              <button key={mode} onClick={() => onUpdateInterpolation(mode)} className={`flex-1 py-2 rounded-lg text-[10px] font-bold transition-all border ${currentKeyframe?.interpolation === mode ? 'bg-white/10 text-white border-white/20' : 'bg-transparent text-white/30 border-white/5 hover:border-white/10'}`}>{mode}</button>
+              <button key={mode} onClick={() => onUpdateInterpolation(mode)} className={`flex-1 py-2 rounded-lg text-[10px] font-bold transition-all border ${currentKeyframe?.interpolation === mode ? 'bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-500/20' : 'bg-transparent text-white/30 border-white/5 hover:border-white/10'}`}>{mode}</button>
             ))}
           </div>
         </section>
 
         <section>
           <div className="flex justify-between items-center mb-3">
-            <label className="text-[11px] font-semibold text-white/40 uppercase tracking-widest block">Scene Presets</label>
+            <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block">Scene Presets</label>
             <button onClick={onSavePreset} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-wider transition-colors">+ Save New</button>
           </div>
           <div className="grid grid-cols-2 gap-2">
