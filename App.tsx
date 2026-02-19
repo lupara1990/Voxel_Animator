@@ -14,28 +14,10 @@ import Timeline from './components/Timeline';
 import Toolbar from './components/Toolbar';
 import ExportModal from './components/ExportModal';
 
-// Helper to snapshot current state for history tracking
-const getHistorySnapshot = (state: AppState) => ({
-  voxels: JSON.parse(JSON.stringify(state.voxels)),
-  keyframes: JSON.parse(JSON.stringify(state.keyframes)),
-  selectedPart: state.selectedPart,
-  config: JSON.parse(JSON.stringify(state.config)),
-  gizmoMode: state.gizmoMode,
-  presets: JSON.parse(JSON.stringify(state.presets)),
-  rigTemplate: state.rigTemplate,
-  autoKeyframe: state.autoKeyframe,
-  savedCameras: JSON.parse(JSON.stringify(state.savedCameras)),
-  partParents: JSON.parse(JSON.stringify(state.partParents)),
-  activeParts: [...state.activeParts],
-  restTransforms: JSON.parse(JSON.stringify(state.restTransforms)),
-});
-
-// Cubic easing for smoother animations
 const easeInOutCubic = (t: number): number => {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 };
 
-// Scene Content Component: Handles 3D rendering and gizmo logic
 const SceneContent: React.FC<{ 
   state: AppState, 
   onGizmoChange: (part: RigPart, position: [number, number, number], rotation: [number, number, number]) => void,
@@ -57,9 +39,8 @@ const SceneContent: React.FC<{
     gl.shadowMap.type = THREE.PCFSoftShadowMap;
   }, [gl]);
 
-  // Main animation frame loop for state interpolation
   useFrame(() => {
-    if (state.keyframes.length === 0) return;
+    if (state.keyframes.length === 0 || !state.isPlaying) return;
     
     let prev = state.keyframes[0];
     let next = state.keyframes[0];
@@ -101,12 +82,9 @@ const SceneContent: React.FC<{
       contactShadowOpacity: THREE.MathUtils.lerp(prev.environment.contactShadowOpacity, next.environment.contactShadowOpacity, t),
     };
 
-    if (state.isPlaying) {
-      onUpdateActiveConfig(interpConfig);
-    }
+    onUpdateActiveConfig(interpConfig);
   });
 
-  // Attach/detach transform gizmo based on selection
   useEffect(() => {
     if (state.selectedPart) {
       const obj = scene.getObjectByName(`part-${state.selectedPart}`);
@@ -120,7 +98,6 @@ const SceneContent: React.FC<{
     }
   }, [state.selectedPart, scene, state.voxels, state.activeParts]);
 
-  // Handle programmatic camera moves (presets/saved cameras)
   useEffect(() => {
     if (pendingCamera && controlsRef.current) {
       camera.position.set(pendingCamera.position[0], pendingCamera.position[1], pendingCamera.position[2]);
@@ -149,11 +126,7 @@ const SceneContent: React.FC<{
     const deltaPos: [number, number, number] = [pos.x - rest.position[0], pos.y - rest.position[1], pos.z - rest.position[2]];
     const deltaRot: [number, number, number] = [rot.x - rest.rotation[0], rot.y - rest.rotation[1], rot.z - rest.rotation[2]];
 
-    onGizmoChange(
-      state.selectedPart,
-      deltaPos,
-      deltaRot
-    );
+    onGizmoChange(state.selectedPart, deltaPos, deltaRot);
   };
 
   const handleControlsChange = useCallback(() => {
@@ -247,7 +220,6 @@ const SceneContent: React.FC<{
   );
 };
 
-// Main App Component: Managing application state and UI logic
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>({
     voxels: [],
@@ -286,6 +258,64 @@ const App: React.FC = () => {
   });
   const [hasApiKey, setHasApiKey] = useState(false);
 
+  const pushHistory = useCallback(() => {
+    setHistory(prev => [...prev.slice(-49), JSON.parse(JSON.stringify(state))]);
+    setRedoStack([]);
+  }, [state]);
+
+  const handleUndo = useCallback(() => {
+    setHistory(prevHistory => {
+      if (prevHistory.length === 0) return prevHistory;
+      const last = prevHistory[prevHistory.length - 1];
+      setRedoStack(rs => [...rs, JSON.parse(JSON.stringify(state))]);
+      setState(last);
+      return prevHistory.slice(0, -1);
+    });
+  }, [state]);
+
+  const handleRedo = useCallback(() => {
+    setRedoStack(prevRedo => {
+      if (prevRedo.length === 0) return prevRedo;
+      const next = prevRedo[prevRedo.length - 1];
+      setHistory(h => [...h, JSON.parse(JSON.stringify(state))]);
+      setState(next);
+      return prevRedo.slice(0, -1);
+    });
+  }, [state]);
+
+  const handleTakeSnapshot = useCallback(() => {
+    const canvas = document.querySelector('canvas');
+    if (canvas) {
+      const link = document.createElement('a');
+      link.download = `voxaura_snapshot_${Date.now()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
+      if (e.ctrlKey && e.key === 'z') {
+        e.preventDefault();
+        handleUndo();
+      } else if (e.ctrlKey && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) {
+        e.preventDefault();
+        handleRedo();
+      } else if (e.key === 'g' || e.key === 'G') {
+        setGridVisible(v => !v);
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        setUiVisible(v => !v);
+      } else if (e.key === 's' || e.key === 'S') {
+        handleTakeSnapshot();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo, handleTakeSnapshot]);
+
   useEffect(() => {
     const checkKey = async () => {
       if (typeof (window as any).aistudio !== 'undefined') {
@@ -301,27 +331,6 @@ const App: React.FC = () => {
       await (window as any).aistudio.openSelectKey();
       setHasApiKey(true);
     }
-  };
-
-  const pushHistory = useCallback(() => {
-    setHistory(prev => [...prev.slice(-49), JSON.parse(JSON.stringify(state))]);
-    setRedoStack([]);
-  }, [state]);
-
-  const handleUndo = () => {
-    if (history.length === 0) return;
-    const prev = history[history.length - 1];
-    setRedoStack(rs => [...rs, JSON.parse(JSON.stringify(state))]);
-    setHistory(h => h.slice(0, -1));
-    setState(prev);
-  };
-
-  const handleRedo = () => {
-    if (redoStack.length === 0) return;
-    const next = redoStack[redoStack.length - 1];
-    setHistory(h => [...h, JSON.parse(JSON.stringify(state))]);
-    setRedoStack(rs => rs.slice(0, -1));
-    setState(next);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -345,7 +354,6 @@ const App: React.FC = () => {
       let idx = keyframes.findIndex(k => Math.abs(k.time - s.currentTime) < 0.001);
       
       if (idx === -1) {
-        // Create new keyframe by cloning current interpolated state
         const prevK = keyframes.reduce((pk, ck) => (ck.time <= s.currentTime) ? ck : pk, keyframes[0]);
         const newK: Keyframe = {
           time: s.currentTime,
@@ -385,10 +393,7 @@ const App: React.FC = () => {
 
   const handleConfirmExport = async (prompt: string) => {
     setShowExportModal(false);
-    
-    if (!hasApiKey) {
-      await handleOpenSelectKey();
-    }
+    if (!hasApiKey) await handleOpenSelectKey();
 
     setIsRecording(true);
     const canvas = document.querySelector('canvas');
@@ -403,11 +408,8 @@ const App: React.FC = () => {
         link.click();
       }
     } catch (error: any) {
-      if (error.message === 'RESELECT_KEY') {
-        await handleOpenSelectKey();
-      } else {
-        alert("Render failed. Please check your API key and connection.");
-      }
+      if (error.message === 'RESELECT_KEY') await handleOpenSelectKey();
+      else alert("Render failed. Please check your API key and connection.");
     } finally {
       setIsRecording(false);
     }
@@ -427,7 +429,7 @@ const App: React.FC = () => {
           onFileUpload={handleFileUpload}
           onSelectPart={(p) => setState(s => ({ ...s, selectedPart: p }))}
           onUpdateTransform={(part, type, i, val) => {
-            const currentK = state.keyframes.reduce((pk, ck) => (ck.time <= state.currentTime) ? ck : pk, state.keyframes[0]);
+            const currentK = state.keyframes.reduce((pk, ck) => (state.currentTime >= ck.time) ? ck : pk, state.keyframes[0]);
             const nextVal = [...currentK.transforms[part][type]] as [number, number, number];
             nextVal[i] = val;
             updateKeyframeAtCurrentTime(part, 
@@ -520,13 +522,7 @@ const App: React.FC = () => {
           canRedo={redoStack.length > 0}
           onUndo={handleUndo}
           onRedo={handleRedo}
-          onTakeSnapshot={() => {
-            const canvas = document.querySelector('canvas');
-            const link = document.createElement('a');
-            link.download = `snapshot_${Date.now()}.png`;
-            link.href = canvas?.toDataURL('image/png') || '';
-            link.click();
-          }}
+          onTakeSnapshot={handleTakeSnapshot}
           gridVisible={gridVisible}
           onToggleGrid={() => setGridVisible(!gridVisible)}
         />
@@ -541,7 +537,11 @@ const App: React.FC = () => {
             cameraTrigger={cameraTrigger}
             pendingCamera={pendingCamera}
             cameraStateRef={cameraStateRef}
-            onUpdateActiveConfig={(c) => setState(s => ({ ...s, config: c }))}
+            onUpdateActiveConfig={(c) => {
+              if (state.isPlaying) {
+                setState(s => ({ ...s, config: c }));
+              }
+            }}
           />
         </Canvas>
 
