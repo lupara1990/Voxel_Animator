@@ -2,28 +2,19 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, ContactShadows, Environment, TransformControls } from '@react-three/drei';
-import { EffectComposer, Bloom, ToneMapping, Vignette } from '@react-three/postprocessing';
+import { EffectComposer, Bloom, ToneMapping, Vignette, SSAO } from '@react-three/postprocessing';
 import * as THREE from 'three';
-import { AppState, RigPart, VoxelData, Keyframe, GizmoMode, InterpolationMode, Preset, CameraConfig, RigTemplate, SavedCamera, SceneConfig } from './types';
-import { DEFAULT_CONFIG, INITIAL_TRANSFORMS, DEFAULT_PRESETS, DEFAULT_HIERARCHIES, RIG_PARTS } from './constants';
+import { AppState, RigPart, VoxelData, Keyframe, GizmoMode, InterpolationMode, Preset, CameraConfig, RigTemplate, SavedCamera, SceneConfig, AnimationPreset } from './types';
+import { DEFAULT_CONFIG, INITIAL_TRANSFORMS, DEFAULT_PRESETS, DEFAULT_HIERARCHIES, RIG_PARTS, TEMPLATE_PARTS, INITIAL_REST_TRANSFORMS, ANIMATION_PRESETS } from './constants';
 import { parseVoxFile, reprocessVoxels } from './services/voxParser';
 import { generateVoxAnimationVideo } from './services/geminiService';
 import VoxelModel from './components/VoxelModel';
 import Sidebar from './components/Sidebar';
 import Timeline from './components/Timeline';
+import Toolbar from './components/Toolbar';
+import ExportModal from './components/ExportModal';
 
-declare global {
-  interface AIStudio {
-    hasSelectedApiKey: () => Promise<boolean>;
-    openSelectKey: () => Promise<void>;
-  }
-
-  interface Window {
-    // Fix: Remove readonly to avoid "All declarations of 'aistudio' must have identical modifiers" error
-    aistudio: AIStudio;
-  }
-}
-
+// Helper to snapshot current state for history tracking
 const getHistorySnapshot = (state: AppState) => ({
   voxels: JSON.parse(JSON.stringify(state.voxels)),
   keyframes: JSON.parse(JSON.stringify(state.keyframes)),
@@ -35,12 +26,16 @@ const getHistorySnapshot = (state: AppState) => ({
   autoKeyframe: state.autoKeyframe,
   savedCameras: JSON.parse(JSON.stringify(state.savedCameras)),
   partParents: JSON.parse(JSON.stringify(state.partParents)),
+  activeParts: [...state.activeParts],
+  restTransforms: JSON.parse(JSON.stringify(state.restTransforms)),
 });
 
+// Cubic easing for smoother animations
 const easeInOutCubic = (t: number): number => {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 };
 
+// Scene Content Component: Handles 3D rendering and gizmo logic
 const SceneContent: React.FC<{ 
   state: AppState, 
   onGizmoChange: (part: RigPart, position: [number, number, number], rotation: [number, number, number]) => void,
@@ -49,13 +44,20 @@ const SceneContent: React.FC<{
   cameraTrigger: number,
   pendingCamera: CameraConfig | null,
   cameraStateRef: React.MutableRefObject<CameraConfig | null>,
-  onUpdateActiveConfig: (config: SceneConfig) => void
-}> = ({ state, onGizmoChange, onGizmoStart, onGizmoEnd, cameraTrigger, pendingCamera, cameraStateRef, onUpdateActiveConfig }) => {
-  const { scene, camera } = useThree();
+  onUpdateActiveConfig: (config: SceneConfig) => void,
+  gridVisible: boolean
+}> = ({ state, onGizmoChange, onGizmoStart, onGizmoEnd, cameraTrigger, pendingCamera, cameraStateRef, onUpdateActiveConfig, gridVisible }) => {
+  const { scene, camera, gl } = useThree();
   const transformRef = useRef<any>(null);
   const controlsRef = useRef<any>(null);
   const selectedObject = useRef<THREE.Object3D | null>(null);
 
+  useEffect(() => {
+    gl.shadowMap.enabled = true;
+    gl.shadowMap.type = THREE.PCFSoftShadowMap;
+  }, [gl]);
+
+  // Main animation frame loop for state interpolation
   useFrame(() => {
     if (state.keyframes.length === 0) return;
     
@@ -82,6 +84,7 @@ const SceneContent: React.FC<{
     const interpConfig: SceneConfig = {
       exposure: THREE.MathUtils.lerp(prev.environment.exposure, next.environment.exposure, t),
       bloom: THREE.MathUtils.lerp(prev.environment.bloom, next.environment.bloom, t),
+      aoIntensity: THREE.MathUtils.lerp(prev.environment.aoIntensity, next.environment.aoIntensity, t),
       lightIntensity: THREE.MathUtils.lerp(prev.environment.lightIntensity, next.environment.lightIntensity, t),
       lightColor: lerpColor(prev.environment.lightColor, next.environment.lightColor, t),
       backgroundColor: lerpColor(prev.environment.backgroundColor, next.environment.backgroundColor, t),
@@ -90,13 +93,20 @@ const SceneContent: React.FC<{
       environmentUrl: t < 0.5 ? prev.environment.environmentUrl : next.environment.environmentUrl,
       environmentIntensity: THREE.MathUtils.lerp(prev.environment.environmentIntensity, next.environment.environmentIntensity, t),
       environmentRotation: THREE.MathUtils.lerp(prev.environment.environmentRotation, next.environment.environmentRotation, t),
+      shadowsEnabled: t < 0.5 ? prev.environment.shadowsEnabled : next.environment.shadowsEnabled,
+      shadowSoftness: THREE.MathUtils.lerp(prev.environment.shadowSoftness, next.environment.shadowSoftness, t),
+      shadowResolution: t < 0.5 ? prev.environment.shadowResolution : next.environment.shadowResolution,
+      voxelsCastShadows: t < 0.5 ? prev.environment.voxelsCastShadows : next.environment.voxelsCastShadows,
+      voxelsReceiveShadows: t < 0.5 ? prev.environment.voxelsReceiveShadows : next.environment.voxelsReceiveShadows,
+      contactShadowOpacity: THREE.MathUtils.lerp(prev.environment.contactShadowOpacity, next.environment.contactShadowOpacity, t),
     };
 
-    if (state.isPlaying || Math.abs(state.config.exposure - interpConfig.exposure) > 0.001 || Math.abs(state.config.environmentIntensity - interpConfig.environmentIntensity) > 0.001) {
+    if (state.isPlaying) {
       onUpdateActiveConfig(interpConfig);
     }
   });
 
+  // Attach/detach transform gizmo based on selection
   useEffect(() => {
     if (state.selectedPart) {
       const obj = scene.getObjectByName(`part-${state.selectedPart}`);
@@ -108,8 +118,9 @@ const SceneContent: React.FC<{
       selectedObject.current = null;
       transformRef.current?.detach();
     }
-  }, [state.selectedPart, scene, state.voxels]);
+  }, [state.selectedPart, scene, state.voxels, state.activeParts]);
 
+  // Handle programmatic camera moves (presets/saved cameras)
   useEffect(() => {
     if (pendingCamera && controlsRef.current) {
       camera.position.set(pendingCamera.position[0], pendingCamera.position[1], pendingCamera.position[2]);
@@ -133,10 +144,15 @@ const SceneContent: React.FC<{
     if (!selectedObject.current || !state.selectedPart) return;
     const pos = selectedObject.current.position;
     const rot = selectedObject.current.rotation;
+    
+    const rest = state.restTransforms[state.selectedPart];
+    const deltaPos: [number, number, number] = [pos.x - rest.position[0], pos.y - rest.position[1], pos.z - rest.position[2]];
+    const deltaRot: [number, number, number] = [rot.x - rest.rotation[0], rot.y - rest.rotation[1], rot.z - rest.rotation[2]];
+
     onGizmoChange(
       state.selectedPart,
-      [pos.x, pos.y, pos.z],
-      [rot.x, rot.y, rot.z]
+      deltaPos,
+      deltaRot
     );
   };
 
@@ -183,368 +199,375 @@ const SceneContent: React.FC<{
         angle={0.15} 
         penumbra={1} 
         intensity={state.config.lightIntensity} 
-        castShadow 
+        castShadow={state.config.shadowsEnabled}
+        shadow-mapSize-width={state.config.shadowResolution}
+        shadow-mapSize-height={state.config.shadowResolution}
+        shadow-radius={state.config.shadowSoftness}
       />
       <directionalLight 
         position={[-10, 20, 10]} 
-        intensity={state.config.lightIntensity * 0.5} 
-        color={state.config.lightColor} 
+        intensity={0.5} 
       />
       
-      <Environment 
-        preset={state.config.environmentUrl ? undefined : (state.config.environmentPreset as any)}
-        files={state.config.environmentUrl}
-        background={state.config.backgroundType === 'hdri'}
-        intensity={state.config.environmentIntensity}
-        rotation={[0, state.config.environmentRotation, 0]}
-      />
-
-      {state.voxels.length > 0 && (
-        <VoxelModel 
-          voxels={state.voxels} 
-          keyframes={state.keyframes} 
-          currentTime={state.currentTime} 
-          partParents={state.partParents}
+      {state.config.backgroundType === 'hdri' && (
+        <Environment 
+          preset={state.config.environmentPreset as any} 
+          background={state.config.backgroundType === 'hdri'}
+          blur={0}
         />
       )}
-      <ContactShadows position={[0, -5, 0]} opacity={0.6} scale={100} blur={2.5} far={10} />
-      <gridHelper args={[100, 20, '#222', '#111']} position={[0, -4.9, 0]} />
+
+      <VoxelModel 
+        voxels={state.voxels}
+        keyframes={state.keyframes}
+        currentTime={state.currentTime}
+        partParents={state.partParents}
+        restTransforms={state.restTransforms}
+        castShadow={state.config.voxelsCastShadows}
+        receiveShadow={state.config.voxelsReceiveShadows}
+      />
+
+      {gridVisible && <gridHelper args={[100, 100, 0x444444, 0x222222]} position={[0, -0.01, 0]} />}
+      
+      <ContactShadows 
+        position={[0, 0, 0]} 
+        opacity={state.config.contactShadowOpacity} 
+        scale={100} 
+        blur={2} 
+        far={10} 
+      />
 
       <EffectComposer disableNormalPass>
-        <Bloom 
-          intensity={state.config.bloom} 
-          luminanceThreshold={0.8} 
-          luminanceSmoothing={0.1} 
-          mipmapBlur 
-        />
-        <ToneMapping 
-          exposure={state.config.exposure} 
-          mode={THREE.ACESFilmicToneMapping} 
-        />
+        <SSAO intensity={state.config.aoIntensity * 2} radius={5} />
+        <Bloom luminanceThreshold={1} luminanceSmoothing={0.9} intensity={state.config.bloom} />
+        <ToneMapping exposure={state.config.exposure} />
         <Vignette eskil={false} offset={0.1} darkness={1.1} />
       </EffectComposer>
     </>
   );
 };
 
+// Main App Component: Managing application state and UI logic
 const App: React.FC = () => {
-  const cameraStateRef = useRef<CameraConfig | null>({
-    position: [50, 50, 50],
-    target: [0, 0, 0],
-    fov: 35
-  });
-
   const [state, setState] = useState<AppState>({
     voxels: [],
-    keyframes: [{ time: 0, interpolation: InterpolationMode.LINEAR, transforms: INITIAL_TRANSFORMS, environment: DEFAULT_CONFIG }],
+    keyframes: [{
+      time: 0,
+      interpolation: InterpolationMode.LINEAR,
+      transforms: { ...INITIAL_TRANSFORMS },
+      environment: { ...DEFAULT_CONFIG }
+    }],
     currentTime: 0,
     isPlaying: false,
     selectedPart: null,
-    config: DEFAULT_CONFIG,
+    config: { ...DEFAULT_CONFIG },
     gizmoMode: 'translate',
     presets: DEFAULT_PRESETS,
     rigTemplate: RigTemplate.HUMANOID,
-    autoKeyframe: false,
+    autoKeyframe: true,
     savedCameras: [],
-    partParents: DEFAULT_HIERARCHIES[RigTemplate.HUMANOID],
+    partParents: { ...DEFAULT_HIERARCHIES[RigTemplate.HUMANOID] },
+    activeParts: [...TEMPLATE_PARTS[RigTemplate.HUMANOID]],
+    restTransforms: { ...INITIAL_REST_TRANSFORMS }
   });
 
-  const [history, setHistory] = useState<{ past: any[], future: any[] }>({ past: [], future: [] });
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportConfig] = useState<{ resolution: '720p' | '1080p'; aspectRatio: '16:9' | '9:16' }>({
+  const [history, setHistory] = useState<AppState[]>([]);
+  const [redoStack, setRedoStack] = useState<AppState[]>([]);
+  const [uiVisible, setUiVisible] = useState(true);
+  const [gridVisible, setGridVisible] = useState(true);
+  const [cameraTrigger, setCameraTrigger] = useState(0);
+  const [pendingCamera, setPendingCamera] = useState<CameraConfig | null>(null);
+  const cameraStateRef = useRef<CameraConfig | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportConfig, setExportConfig] = useState<{ resolution: '720p' | '1080p'; aspectRatio: '16:9' | '9:16' }>({
     resolution: '1080p',
     aspectRatio: '16:9'
   });
-  const [exportedVideoUrl, setExportedVideoUrl] = useState<string | null>(null);
-  const [cameraTrigger, setCameraTrigger] = useState(0);
-  const [pendingCamera, setPendingCamera] = useState<CameraConfig | null>(null);
+  const [hasApiKey, setHasApiKey] = useState(false);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const checkKey = async () => {
+      if (typeof (window as any).aistudio !== 'undefined') {
+        const selected = await (window as any).aistudio.hasSelectedApiKey();
+        setHasApiKey(selected);
+      }
+    };
+    checkKey();
+  }, []);
 
-  const pushHistory = useCallback(() => {
-    setHistory(h => ({
-      past: [...h.past, getHistorySnapshot(state)],
-      future: []
-    }));
-  }, [state]);
-
-  const undo = () => {
-    if (history.past.length === 0) return;
-    const prev = history.past[history.past.length - 1];
-    setHistory(h => ({
-      past: h.past.slice(0, -1),
-      future: [getHistorySnapshot(state), ...h.future]
-    }));
-    setState(s => ({ ...s, ...prev }));
+  const handleOpenSelectKey = async () => {
+    if (typeof (window as any).aistudio !== 'undefined') {
+      await (window as any).aistudio.openSelectKey();
+      setHasApiKey(true);
+    }
   };
 
-  const redo = () => {
-    if (history.future.length === 0) return;
-    const next = history.future[0];
-    setHistory(h => ({
-      past: [...h.past, getHistorySnapshot(state)],
-      future: h.future.slice(1)
-    }));
-    setState(s => ({ ...s, ...next }));
+  const pushHistory = useCallback(() => {
+    setHistory(prev => [...prev.slice(-49), JSON.parse(JSON.stringify(state))]);
+    setRedoStack([]);
+  }, [state]);
+
+  const handleUndo = () => {
+    if (history.length === 0) return;
+    const prev = history[history.length - 1];
+    setRedoStack(rs => [...rs, JSON.parse(JSON.stringify(state))]);
+    setHistory(h => h.slice(0, -1));
+    setState(prev);
+  };
+
+  const handleRedo = () => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setHistory(h => [...h, JSON.parse(JSON.stringify(state))]);
+    setRedoStack(rs => rs.slice(0, -1));
+    setState(next);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    pushHistory();
     const buffer = await file.arrayBuffer();
     const voxels = await parseVoxFile(buffer, state.rigTemplate);
-    pushHistory();
-    setState(s => ({ ...s, voxels, selectedPart: null }));
-  };
-
-  const updateActiveConfig = (config: SceneConfig) => {
-    setState(s => ({ ...s, config }));
-  };
-
-  const updateTransform = (part: RigPart, type: 'position' | 'rotation', index: number, value: number) => {
-    setState(s => {
-      const newKeyframes = [...s.keyframes];
-      const ki = newKeyframes.findIndex(k => Math.abs(k.time - s.currentTime) < 0.001);
-      
-      if (ki !== -1) {
-        newKeyframes[ki].transforms[part][type][index] = value;
-      } else if (s.autoKeyframe) {
-        const closest = [...newKeyframes].sort((a, b) => Math.abs(a.time - s.currentTime) - Math.abs(b.time - s.currentTime))[0];
-        const newKf = JSON.parse(JSON.stringify(closest));
-        newKf.time = s.currentTime;
-        newKf.transforms[part][type][index] = value;
-        newKeyframes.push(newKf);
-        newKeyframes.sort((a, b) => a.time - b.time);
-      }
-      return { ...s, keyframes: newKeyframes };
-    });
+    setState(s => ({ ...s, voxels }));
   };
 
   const handleGizmoChange = (part: RigPart, position: [number, number, number], rotation: [number, number, number]) => {
+    if (state.autoKeyframe) {
+      updateKeyframeAtCurrentTime(part, position, rotation);
+    }
+  };
+
+  const updateKeyframeAtCurrentTime = (part: RigPart, position: [number, number, number], rotation: [number, number, number]) => {
     setState(s => {
-      const newKeyframes = [...s.keyframes];
-      const ki = newKeyframes.findIndex(k => Math.abs(k.time - s.currentTime) < 0.001);
-      if (ki !== -1) {
-        newKeyframes[ki].transforms[part] = { position, rotation };
-      } else if (s.autoKeyframe) {
-        const closest = [...newKeyframes].sort((a, b) => Math.abs(a.time - s.currentTime) - Math.abs(b.time - s.currentTime))[0];
-        const newKf = JSON.parse(JSON.stringify(closest));
-        newKf.time = s.currentTime;
-        newKf.transforms[part] = { position, rotation };
-        newKeyframes.push(newKf);
-        newKeyframes.sort((a, b) => a.time - b.time);
+      const keyframes = [...s.keyframes];
+      let idx = keyframes.findIndex(k => Math.abs(k.time - s.currentTime) < 0.001);
+      
+      if (idx === -1) {
+        // Create new keyframe by cloning current interpolated state
+        const prevK = keyframes.reduce((pk, ck) => (ck.time <= s.currentTime) ? ck : pk, keyframes[0]);
+        const newK: Keyframe = {
+          time: s.currentTime,
+          interpolation: prevK.interpolation,
+          transforms: JSON.parse(JSON.stringify(prevK.transforms)),
+          environment: JSON.parse(JSON.stringify(s.config))
+        };
+        newK.transforms[part] = { position, rotation };
+        keyframes.push(newK);
+        keyframes.sort((a, b) => a.time - b.time);
+      } else {
+        keyframes[idx].transforms[part] = { position, rotation };
+        keyframes[idx].environment = JSON.parse(JSON.stringify(s.config));
       }
-      return { ...s, keyframes: newKeyframes };
+      return { ...s, keyframes };
     });
   };
 
-  const addKeyframe = () => {
+  const handleAddKeyframe = () => {
     pushHistory();
     setState(s => {
-      const existing = s.keyframes.find(k => Math.abs(k.time - s.currentTime) < 0.001);
-      if (existing) return s;
+      const keyframes = [...s.keyframes];
+      const idx = keyframes.findIndex(k => Math.abs(k.time - s.currentTime) < 0.001);
+      if (idx !== -1) return s;
 
-      const closest = [...s.keyframes].sort((a, b) => Math.abs(a.time - s.currentTime) - Math.abs(b.time - s.currentTime))[0];
-      const newKf: Keyframe = JSON.parse(JSON.stringify(closest));
-      newKf.time = s.currentTime;
-      newKf.environment = { ...s.config };
-
-      const newKeyframes = [...s.keyframes, newKf].sort((a, b) => a.time - b.time);
-      return { ...s, keyframes: newKeyframes };
+      const prevK = keyframes.reduce((pk, ck) => (ck.time <= s.currentTime) ? ck : pk, keyframes[0]);
+      keyframes.push({
+        time: s.currentTime,
+        interpolation: prevK.interpolation,
+        transforms: JSON.parse(JSON.stringify(prevK.transforms)),
+        environment: JSON.parse(JSON.stringify(s.config))
+      });
+      keyframes.sort((a, b) => a.time - b.time);
+      return { ...s, keyframes };
     });
   };
 
-  const handleUpdatePartParent = (part: RigPart, parent: RigPart | null) => {
-    pushHistory();
-    setState(s => ({
-      ...s,
-      partParents: { ...s.partParents, [part]: parent }
-    }));
-  };
-
-  const handleExport = async () => {
-    if (window.aistudio) {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        if (!hasKey) {
-          await window.aistudio.openSelectKey();
-        }
+  const handleConfirmExport = async (prompt: string) => {
+    setShowExportModal(false);
+    
+    if (!hasApiKey) {
+      await handleOpenSelectKey();
     }
 
-    if (!canvasRef.current) return;
-    setIsExporting(true);
-    setExportedVideoUrl(null);
+    setIsRecording(true);
+    const canvas = document.querySelector('canvas');
+    const base64Image = canvas?.toDataURL('image/png') || '';
 
     try {
-      const screenshot = canvasRef.current.toDataURL('image/png');
-      const promptText = `a ${state.rigTemplate.toLowerCase()} voxel character in a cinematic ${state.config.lightColor} environment`;
-      const videoUrl = await generateVoxAnimationVideo(promptText, screenshot, exportConfig.resolution, exportConfig.aspectRatio);
-      setExportedVideoUrl(videoUrl);
-    } catch (error: any) {
-      if (error.message === "RESELECT_KEY" && window.aistudio) {
-        await window.aistudio.openSelectKey();
+      const videoUrl = await generateVoxAnimationVideo(prompt, base64Image, exportConfig.resolution, exportConfig.aspectRatio);
+      if (videoUrl) {
+        const link = document.createElement('a');
+        link.href = videoUrl;
+        link.download = `voxaura_${Date.now()}.mp4`;
+        link.click();
       }
-      console.error(error);
+    } catch (error: any) {
+      if (error.message === 'RESELECT_KEY') {
+        await handleOpenSelectKey();
+      } else {
+        alert("Render failed. Please check your API key and connection.");
+      }
     } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const onSaveCamera = useCallback(() => {
-    const inputName = prompt("Enter a name for this camera view:");
-    if (inputName === null) return;
-    const name = inputName.trim() || `View ${state.savedCameras.length + 1}`;
-    
-    if (cameraStateRef.current) {
-      const config: CameraConfig = {
-        position: [...cameraStateRef.current.position] as [number, number, number],
-        target: [...cameraStateRef.current.target] as [number, number, number],
-        fov: cameraStateRef.current.fov
-      };
-      setState(s => ({
-        ...s,
-        savedCameras: [...s.savedCameras, { id: Date.now().toString(), name, config }]
-      }));
-    }
-  }, [state.savedCameras.length]);
-
-  const onUpdateCamera = (id: string) => {
-    if (cameraStateRef.current) {
-      const config: CameraConfig = {
-        position: [...cameraStateRef.current.position] as [number, number, number],
-        target: [...cameraStateRef.current.target] as [number, number, number],
-        fov: cameraStateRef.current.fov
-      };
-      setState(s => ({
-        ...s,
-        savedCameras: s.savedCameras.map(c => c.id === id ? { ...c, config } : c)
-      }));
+      setIsRecording(false);
     }
   };
 
   return (
-    <div className="flex h-screen w-screen bg-black text-white overflow-hidden font-sans selection:bg-indigo-500/30">
-      <Sidebar 
-        state={state}
-        canUndo={history.past.length > 0}
-        canRedo={history.future.length > 0}
-        onUndo={undo}
-        onRedo={redo}
-        onUpdateConfig={(updates) => setState(s => ({ ...s, config: { ...s.config, ...updates } }))}
-        onConfigInteractionStart={pushHistory}
-        onFileUpload={handleFileUpload}
-        onSelectPart={(part) => setState(s => ({ ...s, selectedPart: part }))}
-        onUpdateTransform={updateTransform}
-        onTransformInteractionStart={pushHistory}
-        onSetGizmoMode={(mode) => setState(s => ({ ...s, gizmoMode: mode }))}
-        onUpdateInterpolation={(mode) => setState(s => {
-          const newKfs = [...s.keyframes];
-          const ki = newKfs.findIndex(k => Math.abs(k.time - s.currentTime) < 0.001);
-          if (ki !== -1) newKfs[ki].interpolation = mode;
-          return { ...s, keyframes: newKfs };
-        })}
-        onUpdateRigTemplate={(template) => {
-          pushHistory();
-          setState(s => ({ 
-            ...s, 
-            rigTemplate: template, 
-            voxels: reprocessVoxels(s.voxels, template),
-            selectedPart: null,
-            partParents: DEFAULT_HIERARCHIES[template]
-          }));
-        }}
-        onUpdateAutoKeyframe={(auto) => setState(s => ({ ...s, autoKeyframe: auto }))}
-        onUpdatePartParent={handleUpdatePartParent}
-        onApplyPreset={(p) => {
-          pushHistory();
-          setPendingCamera(p.camera);
-          setCameraTrigger(prev => prev + 1);
-          setState(s => ({ ...s, config: p.config }));
-        }}
-        onSavePreset={() => {
-          const name = prompt("Preset Name:");
-          if (name) {
+    <div className="fixed inset-0 bg-black text-white flex overflow-hidden font-sans">
+      {uiVisible && (
+        <Sidebar 
+          state={state}
+          canUndo={history.length > 0}
+          canRedo={redoStack.length > 0}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          onUpdateConfig={(u) => setState(s => ({ ...s, config: { ...s.config, ...u } }))}
+          onConfigInteractionStart={pushHistory}
+          onFileUpload={handleFileUpload}
+          onSelectPart={(p) => setState(s => ({ ...s, selectedPart: p }))}
+          onUpdateTransform={(part, type, i, val) => {
+            const currentK = state.keyframes.reduce((pk, ck) => (ck.time <= state.currentTime) ? ck : pk, state.keyframes[0]);
+            const nextVal = [...currentK.transforms[part][type]] as [number, number, number];
+            nextVal[i] = val;
+            updateKeyframeAtCurrentTime(part, 
+              type === 'position' ? nextVal : currentK.transforms[part].position,
+              type === 'rotation' ? nextVal : currentK.transforms[part].rotation
+            );
+          }}
+          onUpdateRestTransform={(part, type, i, val) => {
+            setState(s => {
+              const nextRest = JSON.parse(JSON.stringify(s.restTransforms));
+              nextRest[part][type][i] = val;
+              return { ...s, restTransforms: nextRest };
+            });
+          }}
+          onTransformInteractionStart={pushHistory}
+          onSetGizmoMode={(m) => setState(s => ({ ...s, gizmoMode: m }))}
+          onUpdateInterpolation={(mode) => setState(s => {
+            const kfs = [...s.keyframes];
+            const idx = kfs.findIndex(k => Math.abs(k.time - s.currentTime) < 0.001);
+            if (idx !== -1) kfs[idx].interpolation = mode;
+            return { ...s, keyframes: kfs };
+          })}
+          onUpdateRigTemplate={(t) => {
+            pushHistory();
             setState(s => ({
               ...s,
-              presets: [...s.presets, { id: Date.now().toString(), name, config: s.config, camera: cameraStateRef.current! }]
+              rigTemplate: t,
+              activeParts: [...TEMPLATE_PARTS[t]],
+              partParents: { ...DEFAULT_HIERARCHIES[t] },
+              voxels: reprocessVoxels(s.voxels, t)
             }));
-          }
-        }}
-        onSaveCamera={onSaveCamera}
-        onUpdateCamera={onUpdateCamera}
-        onDeleteCamera={(id) => setState(s => ({ ...s, savedCameras: s.savedCameras.filter(c => c.id !== id) }))}
-        onSwitchCamera={(config) => {
-          setPendingCamera(config);
-          setCameraTrigger(prev => prev + 1);
-        }}
-        onExport={handleExport}
-        isExporting={isExporting}
-      />
-
-      <main className="flex-1 relative flex flex-col">
-        <div className="flex-1 relative">
-          <Canvas 
-            shadows 
-            gl={{ preserveDrawingBuffer: true, antialias: true }}
-            ref={canvasRef}
-          >
-            <SceneContent 
-              state={state} 
-              onGizmoChange={handleGizmoChange}
-              onGizmoStart={pushHistory}
-              onGizmoEnd={() => {}} 
-              cameraTrigger={cameraTrigger}
-              pendingCamera={pendingCamera}
-              cameraStateRef={cameraStateRef}
-              onUpdateActiveConfig={updateActiveConfig}
-            />
-          </Canvas>
-
-          {exportedVideoUrl && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-10">
-              <div className="relative max-w-4xl w-full bg-neutral-900 rounded-2xl overflow-hidden shadow-2xl border border-white/10">
-                <div className="p-4 border-b border-white/5 flex justify-between items-center bg-white/5">
-                  <h3 className="text-sm font-bold uppercase tracking-widest text-indigo-400">Cinematic Render Complete</h3>
-                  <button onClick={() => setExportedVideoUrl(null)} className="text-white/40 hover:text-white transition-colors"><i className="fas fa-times"></i></button>
-                </div>
-                <video src={exportedVideoUrl} controls autoPlay loop className="w-full aspect-video bg-black" />
-                <div className="p-6 flex justify-between items-center">
-                  <p className="text-xs text-white/40 italic">Rendered with Gemini Veo 3.1 Fast</p>
-                  <a href={exportedVideoUrl} download="voxaura-render.mp4" className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-bold uppercase tracking-widest transition-all">Download MP4</a>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <Timeline 
-          currentTime={state.currentTime}
-          keyframes={state.keyframes}
-          isPlaying={state.isPlaying}
-          onTimeChange={(t) => setState(s => ({ ...s, currentTime: t }))}
-          onTogglePlay={() => setState(s => ({ ...s, isPlaying: !s.isPlaying }))}
-          onAddKeyframe={addKeyframe}
+          }}
+          onUpdateAutoKeyframe={(a) => setState(s => ({ ...s, autoKeyframe: a }))}
+          onUpdatePartParent={(part, parent) => setState(s => ({ ...s, partParents: { ...s.partParents, [part]: parent } }))}
+          onAddBone={(p) => setState(s => ({ ...s, activeParts: [...s.activeParts, p] }))}
+          onRemoveBone={(p) => setState(s => ({ ...s, activeParts: s.activeParts.filter(x => x !== p) }))}
+          onApplyAnimationPreset={(p) => {
+            pushHistory();
+            setState(s => ({ ...s, keyframes: p.keyframes as any }));
+          }}
+          onApplyPreset={(p) => {
+            pushHistory();
+            setState(s => ({ ...s, config: p.config }));
+            setPendingCamera(p.camera);
+            setCameraTrigger(prev => prev + 1);
+          }}
+          onSavePreset={() => {}}
+          onSaveCamera={() => {
+            if (cameraStateRef.current) {
+              const name = prompt("Camera Name:", `View ${state.savedCameras.length + 1}`);
+              if (name) {
+                setState(s => ({
+                  ...s,
+                  savedCameras: [...s.savedCameras, { id: Date.now().toString(), name, config: cameraStateRef.current! }]
+                }));
+              }
+            }
+          }}
+          onUpdateCamera={() => {}}
+          onDeleteCamera={(id) => setState(s => ({ ...s, savedCameras: s.savedCameras.filter(c => c.id !== id) }))}
+          onSwitchCamera={(c) => {
+            setPendingCamera(c);
+            setCameraTrigger(prev => prev + 1);
+          }}
+          onLocalRecord={() => setShowExportModal(true)}
+          onSaveProject={() => {
+            const data = JSON.stringify(state);
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `project_${Date.now()}.json`;
+            a.click();
+          }}
+          onLoadProject={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const text = await file.text();
+            setState(JSON.parse(text));
+          }}
+          isRecording={isRecording}
         />
+      )}
+
+      <main className="flex-1 relative bg-[#050505]">
+        <Toolbar 
+          uiVisible={uiVisible}
+          onToggleUI={() => setUiVisible(!uiVisible)}
+          canUndo={history.length > 0}
+          canRedo={redoStack.length > 0}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          onTakeSnapshot={() => {
+            const canvas = document.querySelector('canvas');
+            const link = document.createElement('a');
+            link.download = `snapshot_${Date.now()}.png`;
+            link.href = canvas?.toDataURL('image/png') || '';
+            link.click();
+          }}
+          gridVisible={gridVisible}
+          onToggleGrid={() => setGridVisible(!gridVisible)}
+        />
+        
+        <Canvas shadows className="w-full h-full">
+          <SceneContent 
+            state={state}
+            gridVisible={gridVisible}
+            onGizmoChange={handleGizmoChange}
+            onGizmoStart={pushHistory}
+            onGizmoEnd={() => {}}
+            cameraTrigger={cameraTrigger}
+            pendingCamera={pendingCamera}
+            cameraStateRef={cameraStateRef}
+            onUpdateActiveConfig={(c) => setState(s => ({ ...s, config: c }))}
+          />
+        </Canvas>
+
+        {uiVisible && (
+          <Timeline 
+            currentTime={state.currentTime}
+            keyframes={state.keyframes}
+            isPlaying={state.isPlaying}
+            onTimeChange={(t) => setState(s => ({ ...s, currentTime: t }))}
+            onTogglePlay={() => setState(s => ({ ...s, isPlaying: !s.isPlaying }))}
+            onAddKeyframe={handleAddKeyframe}
+          />
+        )}
       </main>
 
-      <div className="hidden">
-        <ShortcutHandler undo={undo} redo={redo} />
-      </div>
+      {showExportModal && (
+        <ExportModal 
+          config={exportConfig}
+          onUpdateConfig={setExportConfig}
+          onClose={() => setShowExportModal(false)}
+          onConfirm={handleConfirmExport}
+          defaultPrompt={state.rigTemplate === RigTemplate.HUMANOID ? "a humanoid robot performing a graceful dance" : "a majestic voxel creature moving through a digital void"}
+        />
+      )}
     </div>
   );
-};
-
-const ShortcutHandler: React.FC<{undo: () => void, redo: () => void}> = ({undo, redo}) => {
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-        if (e.shiftKey) redo();
-        else undo();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo]);
-  return null;
 };
 
 export default App;

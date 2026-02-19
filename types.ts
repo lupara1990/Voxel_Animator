@@ -38,6 +38,7 @@ export enum RigTemplate {
   HUMANOID = 'HUMANOID',
   QUADRUPED = 'QUADRUPED',
   GENERIC = 'GENERIC',
+  CUSTOM = 'CUSTOM',
 }
 
 export enum InterpolationMode {
@@ -49,6 +50,7 @@ export enum InterpolationMode {
 export interface SceneConfig {
   exposure: number;
   bloom: number;
+  aoIntensity: number;
   lightIntensity: number;
   lightColor: string;
   backgroundColor: string;
@@ -58,6 +60,13 @@ export interface SceneConfig {
   environmentUrl?: string;
   environmentIntensity: number;
   environmentRotation: number;
+  // Shadow Controls
+  shadowsEnabled: boolean;
+  shadowSoftness: number;
+  shadowResolution: number;
+  voxelsCastShadows: boolean;
+  voxelsReceiveShadows: boolean;
+  contactShadowOpacity: number;
 }
 
 export interface Keyframe {
@@ -89,6 +98,13 @@ export interface Preset {
   camera: CameraConfig;
 }
 
+export interface AnimationPreset {
+  id: string;
+  name: string;
+  icon: string;
+  keyframes: Pick<Keyframe, 'time' | 'interpolation' | 'transforms'>[];
+}
+
 export type GizmoMode = 'translate' | 'rotate';
 
 export interface AppState {
@@ -97,11 +113,17 @@ export interface AppState {
   currentTime: number;
   isPlaying: boolean;
   selectedPart: RigPart | null;
-  config: SceneConfig; // This acts as the "active" or "interpolated" config
+  config: SceneConfig;
   gizmoMode: GizmoMode;
   presets: Preset[];
   rigTemplate: RigTemplate;
   autoKeyframe: boolean;
   savedCameras: SavedCamera[];
   partParents: Record<RigPart, RigPart | null>;
+  // New Rigging Props
+  activeParts: RigPart[];
+  restTransforms: Record<RigPart, {
+    position: [number, number, number];
+    rotation: [number, number, number];
+  }>;
 }
