@@ -11,6 +11,7 @@ interface SidebarProps {
   onUndo: () => void;
   onRedo: () => void;
   onUpdateConfig: (updates: any) => void;
+  onUpdateModelTransform: (updates: any) => void;
   onConfigInteractionStart: () => void;
   onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onSelectPart: (part: RigPart | null) => void;
@@ -40,7 +41,7 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
-  state, activePanel, canUndo, canRedo, onUndo, onRedo, onUpdateConfig, onConfigInteractionStart,
+  state, activePanel, canUndo, canRedo, onUndo, onRedo, onUpdateConfig, onUpdateModelTransform, onConfigInteractionStart,
   onFileUpload, onSelectPart, onUpdateTransform, onUpdateRestTransform, onTransformInteractionStart,
   onSetGizmoMode, onUpdateInterpolation, onUpdateRigTemplate, onUpdateAutoKeyframe, onUpdatePartParent,
   onAddBone, onRemoveBone, onApplyAnimationPreset, onApplyPreset, onSavePreset,
@@ -79,6 +80,67 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <div className="flex items-center gap-3 p-4 bg-white/5 border border-white/10 rounded-xl group-hover:bg-white/10 group-hover:border-indigo-500/50 transition-all duration-300">
                   <div className="w-10 h-10 bg-indigo-500/20 rounded-lg flex items-center justify-center text-indigo-400"><i className="fas fa-file-import"></i></div>
                   <div><span className="block text-sm font-medium">Import .VOX</span><span className="block text-[10px] text-white/40">Automatic Rigging</span></div>
+                </div>
+              </div>
+            </section>
+
+            {/* Global Model Transform Section */}
+            <section className="p-4 bg-indigo-600/5 rounded-2xl border border-indigo-500/20 space-y-4">
+              <label className="text-[11px] font-bold text-indigo-400 uppercase tracking-widest block">Global Model Transform</label>
+              
+              <div className="space-y-4">
+                {/* Scale */}
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-[9px] text-white/40 uppercase tracking-tighter">Uniform Scale</span>
+                    <span className="text-[9px] font-mono text-indigo-300">{state.modelTransform.scale.toFixed(2)}</span>
+                  </div>
+                  <input 
+                    type="range" min="0.01" max="5" step="0.01"
+                    value={state.modelTransform.scale}
+                    onChange={(e) => onUpdateModelTransform({ scale: parseFloat(e.target.value) })}
+                    className="w-full h-1 bg-white/10 rounded-full appearance-none accent-indigo-500"
+                  />
+                </div>
+
+                {/* Position */}
+                <div className="space-y-2">
+                  <span className="text-[9px] text-white/20 uppercase tracking-widest block">World Position</span>
+                  {['X', 'Y', 'Z'].map((axis, i) => (
+                    <div key={axis} className="flex items-center gap-3">
+                      <span className="text-[10px] font-bold text-white/20 w-3 font-mono">{axis}</span>
+                      <input 
+                        type="range" min="-100" max="100" step="0.5"
+                        value={state.modelTransform.position[i]}
+                        onChange={(e) => {
+                          const pos = [...state.modelTransform.position];
+                          pos[i] = parseFloat(e.target.value);
+                          onUpdateModelTransform({ position: pos });
+                        }}
+                        className="flex-1 accent-indigo-500 h-1 bg-white/10 rounded-full appearance-none cursor-pointer"
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Rotation */}
+                <div className="space-y-2">
+                  <span className="text-[9px] text-white/20 uppercase tracking-widest block">World Rotation</span>
+                  {['X', 'Y', 'Z'].map((axis, i) => (
+                    <div key={axis} className="flex items-center gap-3">
+                      <span className="text-[10px] font-bold text-white/20 w-3 font-mono">{axis}</span>
+                      <input 
+                        type="range" min={-Math.PI} max={Math.PI} step={0.1}
+                        value={state.modelTransform.rotation[i]}
+                        onChange={(e) => {
+                          const rot = [...state.modelTransform.rotation];
+                          rot[i] = parseFloat(e.target.value);
+                          onUpdateModelTransform({ rotation: rot });
+                        }}
+                        className="flex-1 accent-indigo-500 h-1 bg-white/10 rounded-full appearance-none cursor-pointer"
+                      />
+                    </div>
+                  ))}
                 </div>
               </div>
             </section>

@@ -128,4 +128,10 @@ export interface AppState {
   // New Layer Properties
   hiddenParts: RigPart[];
   lockedParts: RigPart[];
+  // Global Model Transform
+  modelTransform: {
+    position: [number, number, number];
+    rotation: [number, number, number];
+    scale: number;
+  };
 }

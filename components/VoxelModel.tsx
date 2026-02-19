@@ -4,10 +4,15 @@ import { useFrame, ThreeElements } from '@react-three/fiber';
 import * as THREE from 'three';
 import { VoxelData, Keyframe, RigPart, InterpolationMode } from '../types';
 
-// Fix JSX intrinsic element errors by extending the global JSX namespace with Three.js elements
+// Fix JSX intrinsic element errors by extending the global JSX and React.JSX namespaces with Three.js elements
 declare global {
   namespace JSX {
     interface IntrinsicElements extends ThreeElements {}
+  }
+  namespace React {
+    namespace JSX {
+      interface IntrinsicElements extends ThreeElements {}
+    }
   }
 }
 
@@ -20,13 +25,28 @@ interface VoxelModelProps {
   castShadow?: boolean;
   receiveShadow?: boolean;
   hiddenParts?: RigPart[];
+  modelTransform?: {
+    position: [number, number, number];
+    rotation: [number, number, number];
+    scale: number;
+  };
 }
 
 const easeInOutCubic = (t: number): number => {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 };
 
-const VoxelModel: React.FC<VoxelModelProps> = ({ voxels, keyframes, currentTime, partParents, restTransforms, castShadow = true, receiveShadow = true, hiddenParts = [] }) => {
+const VoxelModel: React.FC<VoxelModelProps> = ({ 
+  voxels, 
+  keyframes, 
+  currentTime, 
+  partParents, 
+  restTransforms, 
+  castShadow = true, 
+  receiveShadow = true, 
+  hiddenParts = [],
+  modelTransform = { position: [0, 0, 0], rotation: [0, 0, 0], scale: 0.5 }
+}) => {
   const groupRefs = useRef<Record<string, THREE.Group | null>>({});
   const modelRootRef = useRef<THREE.Group>(null);
 
@@ -108,6 +128,13 @@ const VoxelModel: React.FC<VoxelModelProps> = ({ voxels, keyframes, currentTime,
         rest.rotation[2] + THREE.MathUtils.lerp(pRot[2], nRot[2], t)
       );
     });
+
+    // Apply global model transform
+    if (modelRootRef.current) {
+      modelRootRef.current.position.set(modelTransform.position[0], modelTransform.position[1], modelTransform.position[2]);
+      modelRootRef.current.rotation.set(modelTransform.rotation[0], modelTransform.rotation[1], modelTransform.rotation[2]);
+      modelRootRef.current.scale.setScalar(modelTransform.scale);
+    }
   });
 
   const centerModel = useMemo(() => {
@@ -119,21 +146,26 @@ const VoxelModel: React.FC<VoxelModelProps> = ({ voxels, keyframes, currentTime,
   }, [voxels]);
 
   return (
-    <group ref={modelRootRef} position={[0, 0, 0]} scale={[0.5, 0.5, 0.5]}>
+    // Added fix for intrinsic group element
+    <group ref={modelRootRef}>
       {(Object.entries(voxelGroups) as [string, VoxelData[]][]).map(([part, partVoxels]) => (
+        // Added fix for intrinsic group element
         <group 
           key={part} 
           name={`part-${part}`}
           ref={(el) => groupRefs.current[part] = el}
         >
           {partVoxels.map((v, i) => (
+            // Added fix for intrinsic mesh element
             <mesh 
               key={i} 
               position={[v.x + centerModel.x, v.z + centerModel.z, v.y + centerModel.y]} 
               castShadow={castShadow}
               receiveShadow={receiveShadow}
             >
+              {/* Added fix for intrinsic boxGeometry element */}
               <boxGeometry args={[1, 1, 1]} />
+              {/* Added fix for intrinsic meshStandardMaterial element */}
               <meshStandardMaterial color={v.color} roughness={0.1} metalness={0.2} />
             </mesh>
           ))}

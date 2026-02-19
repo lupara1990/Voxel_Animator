@@ -15,10 +15,15 @@ import Toolbar from './components/Toolbar';
 import ExportModal from './components/ExportModal';
 import GuideModal from './components/GuideModal';
 
-// Fix JSX intrinsic element errors by extending the global JSX namespace with Three.js elements
+// Fix JSX intrinsic element errors by extending the global JSX and React.JSX namespaces with Three.js elements
 declare global {
   namespace JSX {
     interface IntrinsicElements extends ThreeElements {}
+  }
+  namespace React {
+    namespace JSX {
+      interface IntrinsicElements extends ThreeElements {}
+    }
   }
 }
 
@@ -128,9 +133,12 @@ const SceneContent: React.FC<{
         onChange={handleControlsChange}
       />
       {state.config.backgroundType === 'color' && (
+        // Added fix for intrinsic color element
         <color attach="background" args={[state.config.backgroundColor]} />
       )}
+      {/* Added fix for intrinsic ambientLight element */}
       <ambientLight intensity={0.2} />
+      {/* Added fix for intrinsic spotLight element */}
       <spotLight 
         position={[50, 100, 50]} 
         angle={0.15} 
@@ -141,6 +149,7 @@ const SceneContent: React.FC<{
         shadow-mapSize-height={state.config.shadowResolution}
         shadow-radius={state.config.shadowSoftness}
       />
+      {/* Added fix for intrinsic directionalLight element */}
       <directionalLight 
         position={[-10, 20, 10]} 
         intensity={0.5} 
@@ -163,8 +172,10 @@ const SceneContent: React.FC<{
         castShadow={state.config.voxelsCastShadows}
         receiveShadow={state.config.voxelsReceiveShadows}
         hiddenParts={state.hiddenParts}
+        modelTransform={state.modelTransform}
       />
 
+      {/* Added fix for intrinsic gridHelper element */}
       {gridVisible && <gridHelper args={[100, 100, 0x444444, 0x222222]} position={[0, -0.01, 0]} />}
       
       <ContactShadows 
@@ -207,7 +218,12 @@ const App: React.FC = () => {
     activeParts: [...TEMPLATE_PARTS[RigTemplate.HUMANOID]],
     restTransforms: { ...INITIAL_REST_TRANSFORMS },
     hiddenParts: [],
-    lockedParts: []
+    lockedParts: [],
+    modelTransform: {
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: 0.5
+    }
   });
 
   const [history, setHistory] = useState<AppState[]>([]);
@@ -421,6 +437,7 @@ const App: React.FC = () => {
         onUndo={handleUndo}
         onRedo={handleRedo}
         onUpdateConfig={(u) => setState(s => ({ ...s, config: { ...s.config, ...u } }))}
+        onUpdateModelTransform={(u) => setState(s => ({ ...s, modelTransform: { ...s.modelTransform, ...u } }))}
         onConfigInteractionStart={pushHistory}
         onFileUpload={handleFileUpload}
         onSelectPart={(p) => setState(s => ({ ...s, selectedPart: p }))}
