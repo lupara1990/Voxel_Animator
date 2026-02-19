@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, ContactShadows, Environment, TransformControls } from '@react-three/drei';
-import { EffectComposer, Bloom, ToneMapping, Vignette, SSAO } from '@react-three/postprocessing';
+import { EffectComposer, Bloom, ToneMapping, Vignette, N8AO } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { AppState, RigPart, VoxelData, Keyframe, GizmoMode, InterpolationMode, Preset, CameraConfig, RigTemplate, SavedCamera, SceneConfig, AnimationPreset } from './types';
 import { DEFAULT_CONFIG, INITIAL_TRANSFORMS, DEFAULT_PRESETS, DEFAULT_HIERARCHIES, RIG_PARTS, TEMPLATE_PARTS, INITIAL_REST_TRANSFORMS, ANIMATION_PRESETS } from './constants';
@@ -237,8 +237,8 @@ const SceneContent: React.FC<{
         far={10} 
       />
 
-      <EffectComposer disableNormalPass>
-        <SSAO intensity={state.config.aoIntensity * 2} radius={5} />
+      <EffectComposer>
+        <N8AO intensity={state.config.aoIntensity} aoRadius={5} distanceFalloff={1} />
         <Bloom luminanceThreshold={1} luminanceSmoothing={0.9} intensity={state.config.bloom} />
         <ToneMapping exposure={state.config.exposure} />
         <Vignette eskil={false} offset={0.1} darkness={1.1} />
