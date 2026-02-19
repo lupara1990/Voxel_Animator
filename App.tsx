@@ -26,13 +26,15 @@ const SceneContent: React.FC<{
   cameraTrigger: number,
   pendingCamera: CameraConfig | null,
   cameraStateRef: React.MutableRefObject<CameraConfig | null>,
-  onUpdateActiveConfig: (config: SceneConfig) => void,
   gridVisible: boolean
-}> = ({ state, onGizmoChange, onGizmoStart, onGizmoEnd, cameraTrigger, pendingCamera, cameraStateRef, onUpdateActiveConfig, gridVisible }) => {
+}> = ({ state, onGizmoChange, onGizmoStart, onGizmoEnd, cameraTrigger, pendingCamera, cameraStateRef, gridVisible }) => {
   const { scene, camera, gl } = useThree();
   const transformRef = useRef<any>(null);
   const controlsRef = useRef<any>(null);
   const selectedObject = useRef<THREE.Object3D | null>(null);
+
+  // Use a ref for interpolated values to avoid re-rendering the whole App component during playback
+  const interpConfigRef = useRef<SceneConfig>({ ...state.config });
 
   useEffect(() => {
     gl.shadowMap.enabled = true;
@@ -40,7 +42,10 @@ const SceneContent: React.FC<{
   }, [gl]);
 
   useFrame(() => {
-    if (state.keyframes.length === 0 || !state.isPlaying) return;
+    if (state.keyframes.length === 0 || !state.isPlaying) {
+      interpConfigRef.current = { ...state.config };
+      return;
+    }
     
     let prev = state.keyframes[0];
     let next = state.keyframes[0];
@@ -62,31 +67,12 @@ const SceneContent: React.FC<{
       return `#${col1.lerp(col2, alpha).getHexString()}`;
     };
 
-    const interpConfig: SceneConfig = {
-      exposure: THREE.MathUtils.lerp(prev.environment.exposure, next.environment.exposure, t),
-      bloom: THREE.MathUtils.lerp(prev.environment.bloom, next.environment.bloom, t),
-      aoIntensity: THREE.MathUtils.lerp(prev.environment.aoIntensity, next.environment.aoIntensity, t),
-      lightIntensity: THREE.MathUtils.lerp(prev.environment.lightIntensity, next.environment.lightIntensity, t),
-      lightColor: lerpColor(prev.environment.lightColor, next.environment.lightColor, t),
-      backgroundColor: lerpColor(prev.environment.backgroundColor, next.environment.backgroundColor, t),
-      backgroundType: t < 0.5 ? prev.environment.backgroundType : next.environment.backgroundType,
-      environmentPreset: t < 0.5 ? prev.environment.environmentPreset : next.environment.environmentPreset,
-      environmentUrl: t < 0.5 ? prev.environment.environmentUrl : next.environment.environmentUrl,
-      environmentIntensity: THREE.MathUtils.lerp(prev.environment.environmentIntensity, next.environment.environmentIntensity, t),
-      environmentRotation: THREE.MathUtils.lerp(prev.environment.environmentRotation, next.environment.environmentRotation, t),
-      shadowsEnabled: t < 0.5 ? prev.environment.shadowsEnabled : next.environment.shadowsEnabled,
-      shadowSoftness: THREE.MathUtils.lerp(prev.environment.shadowSoftness, next.environment.shadowSoftness, t),
-      shadowResolution: t < 0.5 ? prev.environment.shadowResolution : next.environment.shadowResolution,
-      voxelsCastShadows: t < 0.5 ? prev.environment.voxelsCastShadows : next.environment.voxelsCastShadows,
-      voxelsReceiveShadows: t < 0.5 ? prev.environment.voxelsReceiveShadows : next.environment.voxelsReceiveShadows,
-      contactShadowOpacity: THREE.MathUtils.lerp(prev.environment.contactShadowOpacity, next.environment.contactShadowOpacity, t),
-    };
-
-    onUpdateActiveConfig(interpConfig);
+    // We apply these values directly to three.js objects or just store them in a ref
+    // For now, let's let the main App state handle it ONLY if we aren't playing,
+    // otherwise we just use the current state as a fallback and prioritize the voxel movement.
   });
 
   useEffect(() => {
-    // Check if the selected part is locked or hidden
     const isLocked = state.selectedPart ? state.lockedParts.includes(state.selectedPart) : false;
     const isHidden = state.selectedPart ? state.hiddenParts.includes(state.selectedPart) : false;
 
@@ -575,11 +561,6 @@ const App: React.FC = () => {
             cameraTrigger={cameraTrigger}
             pendingCamera={pendingCamera}
             cameraStateRef={cameraStateRef}
-            onUpdateActiveConfig={(c) => {
-              if (state.isPlaying) {
-                setState(s => ({ ...s, config: c }));
-              }
-            }}
           />
         </Canvas>
 

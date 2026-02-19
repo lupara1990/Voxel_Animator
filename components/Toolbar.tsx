@@ -25,7 +25,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
   onToggleGrid
 }) => {
   return (
-    <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 p-1.5 bg-neutral-900/40 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl pointer-events-auto transition-all duration-500 hover:bg-neutral-900/60 hover:border-white/20">
+    <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 p-1.5 bg-neutral-900/60 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl pointer-events-auto transition-all duration-500 hover:bg-neutral-900/80 hover:border-white/20">
       {/* Undo/Redo Group */}
       <div className="flex items-center gap-1 border-r border-white/5 pr-2 mr-1">
         <button 
@@ -64,15 +64,15 @@ const Toolbar: React.FC<ToolbarProps> = ({
         </button>
       </div>
 
-      {/* UI Visibility Toggle */}
+      {/* UI Visibility Toggle (Focus) */}
       <div className="pl-1">
         <button 
           onClick={onToggleUI}
-          className={`group flex items-center gap-2 px-4 h-10 rounded-xl transition-all font-bold text-[10px] tracking-[0.15em] uppercase ${!uiVisible ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-500/30 hover:bg-indigo-500' : 'text-white/50 hover:bg-white/10 hover:text-white'}`}
-          title={uiVisible ? "Focus Mode (Tab)" : "Show Interface (Tab)"}
+          className={`group flex items-center gap-2 px-4 h-10 rounded-xl transition-all font-bold text-[10px] tracking-[0.15em] uppercase border ${!uiVisible ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-white/5 border-transparent text-white/50 hover:bg-white/10 hover:text-white hover:border-white/10'}`}
+          title={uiVisible ? "Focus Mode (Tab) - Hide panels" : "Restore Interface (Tab) - Show panels"}
         >
-          <i className={`fas ${uiVisible ? 'fa-expand-alt' : 'fa-compress-alt'} transition-transform group-hover:scale-110`}></i>
-          <span className="hidden sm:inline">{uiVisible ? 'Focus' : 'Interface'}</span>
+          <i className={`fas ${uiVisible ? 'fa-expand' : 'fa-compress'} transition-transform group-hover:scale-110`}></i>
+          <span className="hidden sm:inline">{uiVisible ? 'Focus' : 'Restore'}</span>
         </button>
       </div>
     </div>
