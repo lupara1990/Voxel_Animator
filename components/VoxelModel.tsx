@@ -1,6 +1,6 @@
 
-import React, { useMemo, useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+import React, { useMemo, useRef, useLayoutEffect } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { VoxelData, Keyframe, RigPart, InterpolationMode } from '../types';
 
@@ -8,6 +8,7 @@ interface VoxelModelProps {
   voxels: VoxelData[];
   keyframes: Keyframe[];
   currentTime: number;
+  partParents: Record<RigPart, RigPart | null>;
 }
 
 // Ease In Out Cubic
@@ -15,8 +16,9 @@ const easeInOutCubic = (t: number): number => {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 };
 
-const VoxelModel: React.FC<VoxelModelProps> = ({ voxels, keyframes, currentTime }) => {
+const VoxelModel: React.FC<VoxelModelProps> = ({ voxels, keyframes, currentTime, partParents }) => {
   const groupRefs = useRef<Record<string, THREE.Group | null>>({});
+  const modelRootRef = useRef<THREE.Group>(null);
 
   // Group voxels by part
   const voxelGroups = useMemo(() => {
@@ -28,6 +30,30 @@ const VoxelModel: React.FC<VoxelModelProps> = ({ voxels, keyframes, currentTime 
     });
     return groups;
   }, [voxels]);
+
+  // Handle Hierarchy Reconstruction
+  useLayoutEffect(() => {
+    if (!modelRootRef.current) return;
+
+    // First detach everyone to reset
+    // Fix: Add explicit type to avoid 'unknown' error when accessing 'parent'
+    Object.values(groupRefs.current).forEach((group: THREE.Group | null) => {
+      if (group && group.parent) group.parent.remove(group);
+    });
+
+    // Rebuild based on partParents
+    Object.entries(groupRefs.current).forEach(([p, group]) => {
+      if (!group) return;
+      const part = p as RigPart;
+      const parentPart = partParents[part];
+      
+      if (parentPart && groupRefs.current[parentPart]) {
+        groupRefs.current[parentPart]!.add(group);
+      } else {
+        modelRootRef.current!.add(group);
+      }
+    });
+  }, [partParents, voxels]);
 
   // Interpolate transforms
   useFrame(() => {
@@ -52,7 +78,6 @@ const VoxelModel: React.FC<VoxelModelProps> = ({ voxels, keyframes, currentTime 
     } else if (prev.interpolation === InterpolationMode.BEZIER) {
       t = easeInOutCubic(t);
     }
-    // LINEAR is default t
 
     Object.keys(prev.transforms).forEach((p) => {
       const part = p as RigPart;
@@ -79,6 +104,7 @@ const VoxelModel: React.FC<VoxelModelProps> = ({ voxels, keyframes, currentTime 
   });
 
   const centerModel = useMemo(() => {
+    if (voxels.length === 0) return { x: 0, y: 0, z: 0 };
     const avgX = voxels.reduce((sum, v) => sum + v.x, 0) / voxels.length;
     const avgY = voxels.reduce((sum, v) => sum + v.y, 0) / voxels.length;
     const minZ = Math.min(...voxels.map(v => v.z));
@@ -86,7 +112,7 @@ const VoxelModel: React.FC<VoxelModelProps> = ({ voxels, keyframes, currentTime 
   }, [voxels]);
 
   return (
-    <group position={[0, 0, 0]} scale={[0.5, 0.5, 0.5]}>
+    <group ref={modelRootRef} position={[0, 0, 0]} scale={[0.5, 0.5, 0.5]}>
       {(Object.entries(voxelGroups) as [string, VoxelData[]][]).map(([part, partVoxels]) => (
         <group 
           key={part} 

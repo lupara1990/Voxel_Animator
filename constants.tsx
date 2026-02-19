@@ -7,7 +7,15 @@ export const DEFAULT_CONFIG: SceneConfig = {
   lightIntensity: 1.5,
   lightColor: '#ffffff',
   backgroundColor: '#0a0a0a',
+  backgroundType: 'color',
+  environmentPreset: 'city',
+  environmentIntensity: 1.0,
+  environmentRotation: 0,
 };
+
+export const HDRI_PRESETS = [
+  'city', 'apartment', 'studio', 'forest', 'sunset', 'night', 'warehouse', 'lobby'
+];
 
 export const RIG_PARTS = Object.values(RigPart);
 
@@ -22,29 +30,51 @@ export const TEMPLATE_PARTS: Record<RigTemplate, RigPart[]> = {
   [RigTemplate.GENERIC]: [RigPart.ROOT, RigPart.P1, RigPart.P2, RigPart.P3, RigPart.P4, RigPart.P5, RigPart.P6, RigPart.P7, RigPart.P8],
 };
 
+export const DEFAULT_HIERARCHIES: Record<RigTemplate, Record<RigPart, RigPart | null>> = {
+  [RigTemplate.HUMANOID]: RIG_PARTS.reduce((acc, part) => {
+    if (part === RigPart.BODY) acc[part] = RigPart.ROOT;
+    else if ([RigPart.HEAD, RigPart.ARM_L, RigPart.ARM_R, RigPart.LEG_L, RigPart.LEG_R].includes(part)) acc[part] = RigPart.BODY;
+    else acc[part] = null;
+    return acc;
+  }, {} as any),
+  [RigTemplate.QUADRUPED]: RIG_PARTS.reduce((acc, part) => {
+    if (part === RigPart.BODY) acc[part] = RigPart.ROOT;
+    else if (part === RigPart.NECK) acc[part] = RigPart.BODY;
+    else if (part === RigPart.HEAD) acc[part] = RigPart.NECK;
+    else if ([RigPart.TAIL, RigPart.LEG_FL, RigPart.LEG_FR, RigPart.LEG_BL, RigPart.LEG_BR].includes(part)) acc[part] = RigPart.BODY;
+    else acc[part] = null;
+    return acc;
+  }, {} as any),
+  [RigTemplate.GENERIC]: RIG_PARTS.reduce((acc, part) => {
+    if (part !== RigPart.ROOT) acc[part] = RigPart.ROOT;
+    else acc[part] = null;
+    return acc;
+  }, {} as any),
+};
+
 export const DEFAULT_PRESETS: Preset[] = [
   {
     id: 'studio-clean',
     name: 'Studio Clean',
-    config: { ...DEFAULT_CONFIG, backgroundColor: '#1a1a1a', lightColor: '#ffffff', lightIntensity: 1.8 },
+    config: { ...DEFAULT_CONFIG, backgroundColor: '#1a1a1a', lightColor: '#ffffff', lightIntensity: 1.8, backgroundType: 'hdri', environmentPreset: 'studio' },
     camera: { position: [50, 50, 50], target: [0, 0, 0], fov: 35 }
   },
   {
     id: 'cyber-night',
     name: 'Cyber Night',
-    config: { exposure: 1.5, bloom: 0.8, lightIntensity: 2.5, lightColor: '#ff00ff', backgroundColor: '#050005' },
+    config: { ...DEFAULT_CONFIG, exposure: 1.5, bloom: 0.8, lightIntensity: 2.5, lightColor: '#ff00ff', backgroundColor: '#050005', backgroundType: 'hdri', environmentPreset: 'night' },
     camera: { position: [40, 20, 40], target: [0, 5, 0], fov: 40 }
   },
   {
     id: 'desert-sun',
     name: 'Desert Sun',
-    config: { exposure: 1.1, bloom: 0.3, lightIntensity: 2.0, lightColor: '#ffcc99', backgroundColor: '#2a1a0a' },
+    config: { ...DEFAULT_CONFIG, exposure: 1.1, bloom: 0.3, lightIntensity: 2.0, lightColor: '#ffcc99', backgroundColor: '#2a1a0a', backgroundType: 'hdri', environmentPreset: 'sunset' },
     camera: { position: [60, 30, 10], target: [0, 0, 0], fov: 30 }
   },
   {
     id: 'void-minimal',
     name: 'Void Minimal',
-    config: { exposure: 0.8, bloom: 0.2, lightIntensity: 1.0, lightColor: '#4444ff', backgroundColor: '#000000' },
+    config: { ...DEFAULT_CONFIG, exposure: 0.8, bloom: 0.2, lightIntensity: 1.0, lightColor: '#4444ff', backgroundColor: '#000000', backgroundType: 'color' },
     camera: { position: [0, 100, 0], target: [0, 0, 0], fov: 25 }
   }
 ];

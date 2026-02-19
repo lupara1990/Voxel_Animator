@@ -52,6 +52,12 @@ export interface SceneConfig {
   lightIntensity: number;
   lightColor: string;
   backgroundColor: string;
+  // Environment Mapping
+  backgroundType: 'color' | 'hdri';
+  environmentPreset: string;
+  environmentUrl?: string;
+  environmentIntensity: number;
+  environmentRotation: number;
 }
 
 export interface Keyframe {
@@ -97,4 +103,5 @@ export interface AppState {
   rigTemplate: RigTemplate;
   autoKeyframe: boolean;
   savedCameras: SavedCamera[];
+  partParents: Record<RigPart, RigPart | null>;
 }

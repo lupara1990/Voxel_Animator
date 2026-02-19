@@ -3,22 +3,24 @@ import { GoogleGenAI } from "@google/genai";
 
 export const generateVoxAnimationVideo = async (
   prompt: string, 
-  base64Image: string
+  base64Image: string,
+  resolution: '720p' | '1080p' = '1080p',
+  aspectRatio: '16:9' | '9:16' = '16:9'
 ): Promise<string | null> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   try {
     let operation = await ai.models.generateVideos({
       model: 'veo-3.1-fast-generate-preview',
-      prompt: `A high-detailed minimalist voxel animation of ${prompt}. Smooth fluid movements, cinematic soft lighting, clean background, 4k resolution, artistic voxel aesthetic.`,
+      prompt: `A high-detailed minimalist voxel animation of ${prompt}. Smooth fluid movements, cinematic soft lighting, clean background, artistic voxel aesthetic.`,
       image: {
         imageBytes: base64Image.split(',')[1],
         mimeType: 'image/png',
       },
       config: {
         numberOfVideos: 1,
-        resolution: '1080p',
-        aspectRatio: '16:9'
+        resolution: resolution,
+        aspectRatio: aspectRatio
       }
     });
 
