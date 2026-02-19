@@ -34,6 +34,8 @@ interface SidebarProps {
   onSaveProject: () => void;
   onLoadProject: (e: React.ChangeEvent<HTMLInputElement>) => void;
   isRecording: boolean;
+  onTogglePartVisibility: (part: RigPart) => void;
+  onTogglePartLock: (part: RigPart) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -41,21 +43,15 @@ const Sidebar: React.FC<SidebarProps> = ({
   onFileUpload, onSelectPart, onUpdateTransform, onUpdateRestTransform, onTransformInteractionStart,
   onSetGizmoMode, onUpdateInterpolation, onUpdateRigTemplate, onUpdateAutoKeyframe, onUpdatePartParent,
   onAddBone, onRemoveBone, onApplyAnimationPreset, onApplyPreset, onSavePreset,
-  onSaveCamera, onUpdateCamera, onDeleteCamera, onSwitchCamera, onLocalRecord, onSaveProject, onLoadProject, isRecording 
+  onSaveCamera, onUpdateCamera, onDeleteCamera, onSwitchCamera, onLocalRecord, onSaveProject, onLoadProject, isRecording,
+  onTogglePartVisibility, onTogglePartLock
 }) => {
-  const [activeTab, setActiveTab] = useState<'anim' | 'rig' | 'scene'>('anim');
+  const [activeTab, setActiveTab] = useState<'anim' | 'rig' | 'layers' | 'scene'>('anim');
   const currentKeyframe = state.keyframes.reduce((pk, ck) => (ck.time <= state.currentTime) ? ck : pk, state.keyframes[0]);
   const selectedTransform = state.selectedPart ? currentKeyframe?.transforms[state.selectedPart] : null;
   const selectedRest = state.selectedPart ? state.restTransforms[state.selectedPart] : null;
 
   const unusedParts = RIG_PARTS.filter(p => !state.activeParts.includes(p));
-
-  const handleCustomHDRIUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    onUpdateConfig({ environmentUrl: url, backgroundType: 'hdri' });
-  };
 
   return (
     <aside className="w-80 bg-neutral-900/80 backdrop-blur-xl border-r border-white/5 flex flex-col z-30 shadow-2xl overflow-y-auto">
@@ -71,11 +67,11 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <div className="flex border-b border-white/5">
-        {(['anim', 'rig', 'scene'] as const).map(tab => (
+        {(['anim', 'rig', 'layers', 'scene'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-3 text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === tab ? 'text-indigo-400 border-b-2 border-indigo-500' : 'text-white/40 hover:text-white/60'}`}
+            className={`flex-1 py-3 text-[9px] font-bold uppercase tracking-widest transition-all ${activeTab === tab ? 'text-indigo-400 border-b-2 border-indigo-500' : 'text-white/40 hover:text-white/60'}`}
           >
             {tab}
           </button>
@@ -182,6 +178,41 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               </section>
             )}
+          </div>
+        )}
+
+        {activeTab === 'layers' && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
+             <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-1">Part Organization</label>
+             <div className="space-y-1">
+               {state.activeParts.map(part => (
+                 <div key={part} className={`flex items-center gap-2 p-2 rounded-xl border border-white/5 transition-all ${state.selectedPart === part ? 'bg-indigo-600/10 border-indigo-500/30' : 'bg-white/5'}`}>
+                   <div 
+                    className="flex-1 text-[11px] font-medium tracking-wide cursor-pointer flex items-center gap-2"
+                    onClick={() => onSelectPart(part)}
+                   >
+                     <i className={`fas fa-cube text-[10px] ${state.selectedPart === part ? 'text-indigo-400' : 'text-white/20'}`}></i>
+                     {part}
+                   </div>
+                   <div className="flex gap-1">
+                     <button 
+                      onClick={() => onTogglePartVisibility(part)}
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${state.hiddenParts.includes(part) ? 'bg-red-500/20 text-red-400' : 'bg-white/5 text-white/40 hover:text-white/70'}`}
+                      title="Toggle Visibility"
+                     >
+                       <i className={`fas ${state.hiddenParts.includes(part) ? 'fa-eye-slash' : 'fa-eye'} text-[10px]`}></i>
+                     </button>
+                     <button 
+                      onClick={() => onTogglePartLock(part)}
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${state.lockedParts.includes(part) ? 'bg-amber-500/20 text-amber-400' : 'bg-white/5 text-white/40 hover:text-white/70'}`}
+                      title="Toggle Lock"
+                     >
+                       <i className={`fas ${state.lockedParts.includes(part) ? 'fa-lock' : 'fa-lock-open'} text-[10px]`}></i>
+                     </button>
+                   </div>
+                 </div>
+               ))}
+             </div>
           </div>
         )}
 

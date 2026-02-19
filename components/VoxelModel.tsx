@@ -12,13 +12,14 @@ interface VoxelModelProps {
   restTransforms: Record<RigPart, { position: [number, number, number]; rotation: [number, number, number] }>;
   castShadow?: boolean;
   receiveShadow?: boolean;
+  hiddenParts?: RigPart[];
 }
 
 const easeInOutCubic = (t: number): number => {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 };
 
-const VoxelModel: React.FC<VoxelModelProps> = ({ voxels, keyframes, currentTime, partParents, restTransforms, castShadow = true, receiveShadow = true }) => {
+const VoxelModel: React.FC<VoxelModelProps> = ({ voxels, keyframes, currentTime, partParents, restTransforms, castShadow = true, receiveShadow = true, hiddenParts = [] }) => {
   const groupRefs = useRef<Record<string, THREE.Group | null>>({});
   const modelRootRef = useRef<THREE.Group>(null);
 
@@ -77,6 +78,9 @@ const VoxelModel: React.FC<VoxelModelProps> = ({ voxels, keyframes, currentTime,
       const part = p as RigPart;
       const group = groupRefs.current[part];
       if (!group) return;
+
+      // Handle visibility
+      group.visible = !hiddenParts.includes(part);
 
       const rest = restTransforms[part];
       const pPos = prev.transforms[part].position;

@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Keyframe } from '../types';
 
 interface TimelineProps {
@@ -9,14 +9,17 @@ interface TimelineProps {
   onTimeChange: (time: number) => void;
   onTogglePlay: () => void;
   onAddKeyframe: () => void;
+  onMoveKeyframe: (index: number, newTime: number) => void;
 }
 
-const FRAME_STEP = 0.01; // Equivalent to one "frame" in our 1-second normalized timeline
+const FRAME_STEP = 0.01;
 
 const Timeline: React.FC<TimelineProps> = ({ 
-  currentTime, keyframes, isPlaying, onTimeChange, onTogglePlay, onAddKeyframe 
+  currentTime, keyframes, isPlaying, onTimeChange, onTogglePlay, onAddKeyframe, onMoveKeyframe 
 }) => {
   const lastTimeRef = useRef<number>(performance.now());
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
 
   useEffect(() => {
     let frame: number;
@@ -26,7 +29,7 @@ const Timeline: React.FC<TimelineProps> = ({
         const delta = (now - lastTimeRef.current) / 1000;
         lastTimeRef.current = now;
         
-        let newTime = currentTime + delta * 0.2; // Adjust playback speed
+        let newTime = currentTime + delta * 0.2;
         if (newTime > 1) newTime = 0;
         onTimeChange(newTime);
       } else {
@@ -37,6 +40,29 @@ const Timeline: React.FC<TimelineProps> = ({
     frame = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frame);
   }, [isPlaying, currentTime, onTimeChange]);
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (draggingIdx === null || !trackRef.current) return;
+    const rect = trackRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const t = Math.max(0, Math.min(1, x / rect.width));
+    onMoveKeyframe(draggingIdx, t);
+  };
+
+  const handleMouseUp = () => {
+    setDraggingIdx(null);
+  };
+
+  useEffect(() => {
+    if (draggingIdx !== null) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [draggingIdx]);
 
   const handlePrevFrame = () => {
     onTimeChange(Math.max(0, currentTime - FRAME_STEP));
@@ -75,7 +101,7 @@ const Timeline: React.FC<TimelineProps> = ({
           </button>
         </div>
 
-        <div className="flex-1 relative h-6 group">
+        <div className="flex-1 relative h-6 group" ref={trackRef}>
           <input 
             type="range" 
             min="0" max="1" step="0.001" 
@@ -88,8 +114,13 @@ const Timeline: React.FC<TimelineProps> = ({
             {keyframes.map((k, i) => (
               <div 
                 key={i} 
-                className="absolute w-2 h-2 bg-indigo-400 rotate-45 border border-white/20 -translate-x-1" 
-                style={{ left: `${k.time * 100}%`, top: '-2px' }}
+                className={`absolute w-3 h-3 rotate-45 border border-white/40 -translate-x-1.5 cursor-grab pointer-events-auto active:cursor-grabbing transition-transform hover:scale-125 z-20 ${draggingIdx === i ? 'bg-indigo-300 scale-125' : 'bg-indigo-500'}`} 
+                style={{ left: `${k.time * 100}%`, top: '-4px' }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  setDraggingIdx(i);
+                  onTimeChange(k.time);
+                }}
               />
             ))}
           </div>

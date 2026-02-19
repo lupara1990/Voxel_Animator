@@ -120,10 +120,12 @@ export interface AppState {
   autoKeyframe: boolean;
   savedCameras: SavedCamera[];
   partParents: Record<RigPart, RigPart | null>;
-  // New Rigging Props
   activeParts: RigPart[];
   restTransforms: Record<RigPart, {
     position: [number, number, number];
     rotation: [number, number, number];
   }>;
+  // New Layer Properties
+  hiddenParts: RigPart[];
+  lockedParts: RigPart[];
 }

@@ -86,7 +86,11 @@ const SceneContent: React.FC<{
   });
 
   useEffect(() => {
-    if (state.selectedPart) {
+    // Check if the selected part is locked or hidden
+    const isLocked = state.selectedPart ? state.lockedParts.includes(state.selectedPart) : false;
+    const isHidden = state.selectedPart ? state.hiddenParts.includes(state.selectedPart) : false;
+
+    if (state.selectedPart && !isLocked && !isHidden) {
       const obj = scene.getObjectByName(`part-${state.selectedPart}`);
       if (obj) {
         selectedObject.current = obj;
@@ -96,7 +100,7 @@ const SceneContent: React.FC<{
       selectedObject.current = null;
       transformRef.current?.detach();
     }
-  }, [state.selectedPart, scene, state.voxels, state.activeParts]);
+  }, [state.selectedPart, scene, state.voxels, state.activeParts, state.lockedParts, state.hiddenParts]);
 
   useEffect(() => {
     if (pendingCamera && controlsRef.current) {
@@ -143,7 +147,7 @@ const SceneContent: React.FC<{
   return (
     <>
       <PerspectiveCamera makeDefault position={[50, 50, 50]} fov={35} />
-      {state.selectedPart && (
+      {state.selectedPart && !state.lockedParts.includes(state.selectedPart) && (
         <TransformControls 
           ref={transformRef}
           mode={state.gizmoMode}
@@ -198,6 +202,7 @@ const SceneContent: React.FC<{
         restTransforms={state.restTransforms}
         castShadow={state.config.voxelsCastShadows}
         receiveShadow={state.config.voxelsReceiveShadows}
+        hiddenParts={state.hiddenParts}
       />
 
       {gridVisible && <gridHelper args={[100, 100, 0x444444, 0x222222]} position={[0, -0.01, 0]} />}
@@ -240,7 +245,9 @@ const App: React.FC = () => {
     savedCameras: [],
     partParents: { ...DEFAULT_HIERARCHIES[RigTemplate.HUMANOID] },
     activeParts: [...TEMPLATE_PARTS[RigTemplate.HUMANOID]],
-    restTransforms: { ...INITIAL_REST_TRANSFORMS }
+    restTransforms: { ...INITIAL_REST_TRANSFORMS },
+    hiddenParts: [],
+    lockedParts: []
   });
 
   const [history, setHistory] = useState<AppState[]>([]);
@@ -391,6 +398,17 @@ const App: React.FC = () => {
     });
   };
 
+  const handleMoveKeyframe = (index: number, newTime: number) => {
+    setState(s => {
+      const keyframes = [...s.keyframes];
+      if (index === 0 && newTime !== 0) return s; // Keep first keyframe at 0
+      
+      keyframes[index].time = Math.max(0, Math.min(1, newTime));
+      keyframes.sort((a, b) => a.time - b.time);
+      return { ...s, keyframes };
+    });
+  };
+
   const handleConfirmExport = async (prompt: string) => {
     setShowExportModal(false);
     if (!hasApiKey) await handleOpenSelectKey();
@@ -413,6 +431,24 @@ const App: React.FC = () => {
     } finally {
       setIsRecording(false);
     }
+  };
+
+  const togglePartVisibility = (part: RigPart) => {
+    setState(s => ({
+      ...s,
+      hiddenParts: s.hiddenParts.includes(part) 
+        ? s.hiddenParts.filter(p => p !== part) 
+        : [...s.hiddenParts, part]
+    }));
+  };
+
+  const togglePartLock = (part: RigPart) => {
+    setState(s => ({
+      ...s,
+      lockedParts: s.lockedParts.includes(part) 
+        ? s.lockedParts.filter(p => p !== part) 
+        : [...s.lockedParts, part]
+    }));
   };
 
   return (
@@ -511,6 +547,8 @@ const App: React.FC = () => {
             setState(JSON.parse(text));
           }}
           isRecording={isRecording}
+          onTogglePartVisibility={togglePartVisibility}
+          onTogglePartLock={togglePartLock}
         />
       )}
 
@@ -553,6 +591,7 @@ const App: React.FC = () => {
             onTimeChange={(t) => setState(s => ({ ...s, currentTime: t }))}
             onTogglePlay={() => setState(s => ({ ...s, isPlaying: !s.isPlaying }))}
             onAddKeyframe={handleAddKeyframe}
+            onMoveKeyframe={handleMoveKeyframe}
           />
         )}
       </main>
