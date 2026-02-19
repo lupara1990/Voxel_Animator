@@ -1,9 +1,9 @@
 
-import React from 'react';
+import React, { useRef } from 'react';
 
 interface ToolbarProps {
-  uiVisible: boolean;
-  onToggleUI: () => void;
+  activePanel: 'anim' | 'rig' | 'layers' | 'scene' | null;
+  onTogglePanel: (panel: 'anim' | 'rig' | 'layers' | 'scene') => void;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
@@ -11,69 +11,156 @@ interface ToolbarProps {
   onTakeSnapshot: () => void;
   gridVisible: boolean;
   onToggleGrid: () => void;
+  onShowGuide: () => void;
+  onLocalRecord: () => void;
+  onSaveProject: () => void;
+  onLoadProject: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 const Toolbar: React.FC<ToolbarProps> = ({
-  uiVisible,
-  onToggleUI,
+  activePanel,
+  onTogglePanel,
   canUndo,
   canRedo,
   onUndo,
   onRedo,
   onTakeSnapshot,
   gridVisible,
-  onToggleGrid
+  onToggleGrid,
+  onShowGuide,
+  onLocalRecord,
+  onSaveProject,
+  onLoadProject,
+  onFileUpload
 }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const loadInputRef = useRef<HTMLInputElement>(null);
+
+  const ToolButton = ({ 
+    icon, 
+    label, 
+    onClick, 
+    active = false, 
+    disabled = false, 
+    danger = false 
+  }: { 
+    icon: string, 
+    label: string, 
+    onClick: () => void, 
+    active?: boolean, 
+    disabled?: boolean,
+    danger?: boolean
+  }) => (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`
+        flex flex-col items-center justify-center gap-1.5 w-14 h-14 rounded-2xl transition-all duration-300 group relative
+        ${active ? 'bg-indigo-600 text-white shadow-[0_0_20px_rgba(99,102,241,0.4)]' : 'text-white/40 hover:bg-white/10 hover:text-white'}
+        ${disabled ? 'opacity-20 cursor-not-allowed' : 'active:scale-90'}
+        ${danger ? 'hover:bg-red-500/20 hover:text-red-400' : ''}
+      `}
+    >
+      <i className={`fas ${icon} text-lg transition-transform group-hover:scale-110`}></i>
+      <span className="text-[8px] font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 absolute -top-8 bg-neutral-900 px-2 py-1 rounded border border-white/10 pointer-events-none transition-opacity whitespace-nowrap">
+        {label}
+      </span>
+    </button>
+  );
+
   return (
-    <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 p-1.5 bg-neutral-900/60 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl pointer-events-auto transition-all duration-500 hover:bg-neutral-900/80 hover:border-white/20">
-      {/* Undo/Redo Group */}
-      <div className="flex items-center gap-1 border-r border-white/5 pr-2 mr-1">
-        <button 
+    <div className="absolute bottom-36 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 p-1.5 bg-neutral-900/60 backdrop-blur-3xl border border-white/10 rounded-[2rem] shadow-2xl pointer-events-auto transition-all duration-500 hover:bg-neutral-900/80 hover:border-white/20">
+      
+      {/* File Group */}
+      <div className="flex items-center gap-1 pr-2 mr-1 border-r border-white/10">
+        <ToolButton 
+          icon="fa-file-import" 
+          label="Import .VOX" 
+          onClick={() => fileInputRef.current?.click()} 
+        />
+        <input ref={fileInputRef} type="file" accept=".vox" onChange={onFileUpload} className="hidden" />
+        
+        <div className="flex flex-col gap-1">
+          <button onClick={onSaveProject} className="w-8 h-6 flex items-center justify-center rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition-all"><i className="fas fa-save text-[10px]"></i></button>
+          <button onClick={() => loadInputRef.current?.click()} className="w-8 h-6 flex items-center justify-center rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition-all"><i className="fas fa-folder-open text-[10px]"></i></button>
+          <input ref={loadInputRef} type="file" accept=".json" onChange={onLoadProject} className="hidden" />
+        </div>
+      </div>
+
+      {/* Edit Group */}
+      <div className="flex items-center gap-1 pr-2 mr-1 border-r border-white/10">
+        <ToolButton 
+          icon="fa-undo-alt" 
+          label="Undo" 
           onClick={onUndo} 
-          disabled={!canUndo}
-          className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${canUndo ? 'text-white/70 hover:bg-white/10 hover:text-white active:scale-90' : 'text-white/10 cursor-not-allowed'}`}
-          title="Undo (Ctrl+Z)"
-        >
-          <i className="fas fa-undo-alt text-sm"></i>
-        </button>
-        <button 
+          disabled={!canUndo} 
+        />
+        <ToolButton 
+          icon="fa-redo-alt" 
+          label="Redo" 
           onClick={onRedo} 
-          disabled={!canRedo}
-          className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${canRedo ? 'text-white/70 hover:bg-white/10 hover:text-white active:scale-90' : 'text-white/10 cursor-not-allowed'}`}
-          title="Redo (Ctrl+Shift+Z)"
-        >
-          <i className="fas fa-redo-alt text-sm"></i>
-        </button>
+          disabled={!canRedo} 
+        />
       </div>
 
-      {/* Tools Group */}
-      <div className="flex items-center gap-1 border-r border-white/5 pr-2 mr-1">
-        <button 
-          onClick={onToggleGrid}
-          className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${gridVisible ? 'text-indigo-400 bg-indigo-500/20 border border-indigo-500/30' : 'text-white/40 hover:bg-white/10 hover:text-white border border-transparent'}`}
-          title="Toggle Grid (G)"
-        >
-          <i className="fas fa-border-all text-sm"></i>
-        </button>
-        <button 
-          onClick={onTakeSnapshot}
-          className="w-10 h-10 flex items-center justify-center rounded-xl text-white/60 hover:bg-white/10 hover:text-white transition-all active:scale-90"
-          title="Take Cinematic Snapshot (S)"
-        >
-          <i className="fas fa-camera-retro text-sm"></i>
-        </button>
+      {/* Panels Group */}
+      <div className="flex items-center gap-1 pr-2 mr-1 border-r border-white/10">
+        <ToolButton 
+          icon="fa-cubes" 
+          label="Rigging" 
+          onClick={() => onTogglePanel('rig')} 
+          active={activePanel === 'rig'}
+        />
+        <ToolButton 
+          icon="fa-running" 
+          label="Animation" 
+          onClick={() => onTogglePanel('anim')} 
+          active={activePanel === 'anim'}
+        />
+        <ToolButton 
+          icon="fa-layer-group" 
+          label="Layers" 
+          onClick={() => onTogglePanel('layers')} 
+          active={activePanel === 'layers'}
+        />
+        <ToolButton 
+          icon="fa-palette" 
+          label="Scene" 
+          onClick={() => onTogglePanel('scene')} 
+          active={activePanel === 'scene'}
+        />
       </div>
 
-      {/* UI Visibility Toggle (Focus) */}
+      {/* View/Render Group */}
+      <div className="flex items-center gap-1 pr-2 mr-1 border-r border-white/10">
+        <ToolButton 
+          icon="fa-border-all" 
+          label="Grid" 
+          onClick={onToggleGrid} 
+          active={gridVisible}
+        />
+        <ToolButton 
+          icon="fa-camera" 
+          label="Snapshot" 
+          onClick={onTakeSnapshot} 
+        />
+        <ToolButton 
+          icon="fa-film" 
+          label="Render" 
+          onClick={onLocalRecord} 
+          active={false}
+          danger={false}
+        />
+      </div>
+
+      {/* Help Group */}
       <div className="pl-1">
-        <button 
-          onClick={onToggleUI}
-          className={`group flex items-center gap-2 px-4 h-10 rounded-xl transition-all font-bold text-[10px] tracking-[0.15em] uppercase border ${!uiVisible ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-white/5 border-transparent text-white/50 hover:bg-white/10 hover:text-white hover:border-white/10'}`}
-          title={uiVisible ? "Focus Mode (Tab) - Hide panels" : "Restore Interface (Tab) - Show panels"}
-        >
-          <i className={`fas ${uiVisible ? 'fa-expand' : 'fa-compress'} transition-transform group-hover:scale-110`}></i>
-          <span className="hidden sm:inline">{uiVisible ? 'Focus' : 'Restore'}</span>
-        </button>
+        <ToolButton 
+          icon="fa-question-circle" 
+          label="Help Guide" 
+          onClick={onShowGuide} 
+        />
       </div>
     </div>
   );

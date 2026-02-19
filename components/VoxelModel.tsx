@@ -1,8 +1,15 @@
 
 import React, { useMemo, useRef, useLayoutEffect } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, ThreeElements } from '@react-three/fiber';
 import * as THREE from 'three';
 import { VoxelData, Keyframe, RigPart, InterpolationMode } from '../types';
+
+// Fix JSX intrinsic element errors by extending the global JSX namespace with Three.js elements
+declare global {
+  namespace JSX {
+    interface IntrinsicElements extends ThreeElements {}
+  }
+}
 
 interface VoxelModelProps {
   voxels: VoxelData[];

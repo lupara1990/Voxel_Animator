@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Canvas, useThree, useFrame } from '@react-three/fiber';
+import { Canvas, useThree, useFrame, ThreeElements } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, ContactShadows, Environment, TransformControls } from '@react-three/drei';
 import { EffectComposer, Bloom, ToneMapping, Vignette, N8AO } from '@react-three/postprocessing';
 import * as THREE from 'three';
@@ -13,6 +13,14 @@ import Sidebar from './components/Sidebar';
 import Timeline from './components/Timeline';
 import Toolbar from './components/Toolbar';
 import ExportModal from './components/ExportModal';
+import GuideModal from './components/GuideModal';
+
+// Fix JSX intrinsic element errors by extending the global JSX namespace with Three.js elements
+declare global {
+  namespace JSX {
+    interface IntrinsicElements extends ThreeElements {}
+  }
+}
 
 const easeInOutCubic = (t: number): number => {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -33,44 +41,10 @@ const SceneContent: React.FC<{
   const controlsRef = useRef<any>(null);
   const selectedObject = useRef<THREE.Object3D | null>(null);
 
-  // Use a ref for interpolated values to avoid re-rendering the whole App component during playback
-  const interpConfigRef = useRef<SceneConfig>({ ...state.config });
-
   useEffect(() => {
     gl.shadowMap.enabled = true;
     gl.shadowMap.type = THREE.PCFSoftShadowMap;
   }, [gl]);
-
-  useFrame(() => {
-    if (state.keyframes.length === 0 || !state.isPlaying) {
-      interpConfigRef.current = { ...state.config };
-      return;
-    }
-    
-    let prev = state.keyframes[0];
-    let next = state.keyframes[0];
-    for (let i = 0; i < state.keyframes.length; i++) {
-      if (state.keyframes[i].time <= state.currentTime) prev = state.keyframes[i];
-      if (state.keyframes[i].time >= state.currentTime) {
-        next = state.keyframes[i];
-        break;
-      }
-    }
-
-    let t = next.time === prev.time ? 0 : (state.currentTime - prev.time) / (next.time - prev.time);
-    if (prev.interpolation === InterpolationMode.STEP) t = 0;
-    else if (prev.interpolation === InterpolationMode.BEZIER) t = easeInOutCubic(t);
-
-    const lerpColor = (c1: string, c2: string, alpha: number) => {
-      const col1 = new THREE.Color(c1);
-      const col2 = new THREE.Color(c2);
-      return `#${col1.lerp(col2, alpha).getHexString()}`;
-    };
-
-    // We apply these values directly to three.js objects or just store them in a ref
-    // For now, let's let the main App state handle it ONLY if we aren't playing,
-    // otherwise we just use the current state as a fallback and prioritize the voxel movement.
-  });
 
   useEffect(() => {
     const isLocked = state.selectedPart ? state.lockedParts.includes(state.selectedPart) : false;
@@ -238,13 +212,14 @@ const App: React.FC = () => {
 
   const [history, setHistory] = useState<AppState[]>([]);
   const [redoStack, setRedoStack] = useState<AppState[]>([]);
-  const [uiVisible, setUiVisible] = useState(true);
+  const [activePanel, setActivePanel] = useState<'anim' | 'rig' | 'layers' | 'scene' | null>('anim');
   const [gridVisible, setGridVisible] = useState(true);
   const [cameraTrigger, setCameraTrigger] = useState(0);
   const [pendingCamera, setPendingCamera] = useState<CameraConfig | null>(null);
   const cameraStateRef = useRef<CameraConfig | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const [exportConfig, setExportConfig] = useState<{ resolution: '720p' | '1080p'; aspectRatio: '16:9' | '9:16' }>({
     resolution: '1080p',
     aspectRatio: '16:9'
@@ -298,11 +273,10 @@ const App: React.FC = () => {
         handleRedo();
       } else if (e.key === 'g' || e.key === 'G') {
         setGridVisible(v => !v);
-      } else if (e.key === 'Tab') {
-        e.preventDefault();
-        setUiVisible(v => !v);
       } else if (e.key === 's' || e.key === 'S') {
         handleTakeSnapshot();
+      } else if (e.key === '?') {
+        setShowGuide(v => !v);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -439,83 +413,129 @@ const App: React.FC = () => {
 
   return (
     <div className="fixed inset-0 bg-black text-white flex overflow-hidden font-sans">
-      {uiVisible && (
-        <Sidebar 
-          state={state}
+      <Sidebar 
+        state={state}
+        activePanel={activePanel}
+        canUndo={history.length > 0}
+        canRedo={redoStack.length > 0}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onUpdateConfig={(u) => setState(s => ({ ...s, config: { ...s.config, ...u } }))}
+        onConfigInteractionStart={pushHistory}
+        onFileUpload={handleFileUpload}
+        onSelectPart={(p) => setState(s => ({ ...s, selectedPart: p }))}
+        onUpdateTransform={(part, type, i, val) => {
+          const currentK = state.keyframes.reduce((pk, ck) => (state.currentTime >= ck.time) ? ck : pk, state.keyframes[0]);
+          const nextVal = [...currentK.transforms[part][type]] as [number, number, number];
+          nextVal[i] = val;
+          updateKeyframeAtCurrentTime(part, 
+            type === 'position' ? nextVal : currentK.transforms[part].position,
+            type === 'rotation' ? nextVal : currentK.transforms[part].rotation
+          );
+        }}
+        onUpdateRestTransform={(part, type, i, val) => {
+          setState(s => {
+            const nextRest = JSON.parse(JSON.stringify(s.restTransforms));
+            nextRest[part][type][i] = val;
+            return { ...s, restTransforms: nextRest };
+          });
+        }}
+        onTransformInteractionStart={pushHistory}
+        onSetGizmoMode={(m) => setState(s => ({ ...s, gizmoMode: m }))}
+        onUpdateInterpolation={(mode) => setState(s => {
+          const kfs = [...s.keyframes];
+          const idx = kfs.findIndex(k => Math.abs(k.time - s.currentTime) < 0.001);
+          if (idx !== -1) kfs[idx].interpolation = mode;
+          return { ...s, keyframes: kfs };
+        })}
+        onUpdateRigTemplate={(t) => {
+          pushHistory();
+          setState(s => ({
+            ...s,
+            rigTemplate: t,
+            activeParts: [...TEMPLATE_PARTS[t]],
+            partParents: { ...DEFAULT_HIERARCHIES[t] },
+            voxels: reprocessVoxels(s.voxels, t)
+          }));
+        }}
+        onUpdateAutoKeyframe={(a) => setState(s => ({ ...s, autoKeyframe: a }))}
+        onUpdatePartParent={(part, parent) => setState(s => ({ ...s, partParents: { ...s.partParents, [part]: parent } }))}
+        onAddBone={(p) => setState(s => ({ ...s, activeParts: [...s.activeParts, p] }))}
+        onRemoveBone={(p) => setState(s => ({ ...s, activeParts: s.activeParts.filter(x => x !== p) }))}
+        onApplyAnimationPreset={(p) => {
+          pushHistory();
+          setState(s => ({ ...s, keyframes: p.keyframes as any }));
+        }}
+        onApplyPreset={(p) => {
+          pushHistory();
+          setState(s => ({ ...s, config: p.config }));
+          setPendingCamera(p.camera);
+          setCameraTrigger(prev => prev + 1);
+        }}
+        onSavePreset={() => {}}
+        onSaveCamera={() => {
+          if (cameraStateRef.current) {
+            const name = prompt("Camera Name:", `View ${state.savedCameras.length + 1}`);
+            if (name) {
+              setState(s => ({
+                ...s,
+                savedCameras: [...s.savedCameras, { id: Date.now().toString(), name, config: cameraStateRef.current! }]
+              }));
+            }
+          }
+        }}
+        onUpdateCamera={() => {}}
+        onDeleteCamera={(id) => setState(s => ({ ...s, savedCameras: s.savedCameras.filter(c => c.id !== id) }))}
+        onSwitchCamera={(c) => {
+          setPendingCamera(c);
+          setCameraTrigger(prev => prev + 1);
+        }}
+        onLocalRecord={() => setShowExportModal(true)}
+        onSaveProject={() => {
+          const data = JSON.stringify(state);
+          const blob = new Blob([data], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `project_${Date.now()}.json`;
+          a.click();
+        }}
+        onLoadProject={async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          const text = await file.text();
+          setState(JSON.parse(text));
+        }}
+        isRecording={isRecording}
+        onTogglePartVisibility={togglePartVisibility}
+        onTogglePartLock={togglePartLock}
+      />
+
+      <main className="flex-1 relative bg-[#050505]">
+        <Canvas shadows className="w-full h-full">
+          <SceneContent 
+            state={state}
+            gridVisible={gridVisible}
+            onGizmoChange={handleGizmoChange}
+            onGizmoStart={pushHistory}
+            onGizmoEnd={() => {}}
+            cameraTrigger={cameraTrigger}
+            pendingCamera={pendingCamera}
+            cameraStateRef={cameraStateRef}
+          />
+        </Canvas>
+
+        <Toolbar 
+          activePanel={activePanel}
+          onTogglePanel={(p) => setActivePanel(activePanel === p ? null : p)}
           canUndo={history.length > 0}
           canRedo={redoStack.length > 0}
           onUndo={handleUndo}
           onRedo={handleRedo}
-          onUpdateConfig={(u) => setState(s => ({ ...s, config: { ...s.config, ...u } }))}
-          onConfigInteractionStart={pushHistory}
-          onFileUpload={handleFileUpload}
-          onSelectPart={(p) => setState(s => ({ ...s, selectedPart: p }))}
-          onUpdateTransform={(part, type, i, val) => {
-            const currentK = state.keyframes.reduce((pk, ck) => (state.currentTime >= ck.time) ? ck : pk, state.keyframes[0]);
-            const nextVal = [...currentK.transforms[part][type]] as [number, number, number];
-            nextVal[i] = val;
-            updateKeyframeAtCurrentTime(part, 
-              type === 'position' ? nextVal : currentK.transforms[part].position,
-              type === 'rotation' ? nextVal : currentK.transforms[part].rotation
-            );
-          }}
-          onUpdateRestTransform={(part, type, i, val) => {
-            setState(s => {
-              const nextRest = JSON.parse(JSON.stringify(s.restTransforms));
-              nextRest[part][type][i] = val;
-              return { ...s, restTransforms: nextRest };
-            });
-          }}
-          onTransformInteractionStart={pushHistory}
-          onSetGizmoMode={(m) => setState(s => ({ ...s, gizmoMode: m }))}
-          onUpdateInterpolation={(mode) => setState(s => {
-            const kfs = [...s.keyframes];
-            const idx = kfs.findIndex(k => Math.abs(k.time - s.currentTime) < 0.001);
-            if (idx !== -1) kfs[idx].interpolation = mode;
-            return { ...s, keyframes: kfs };
-          })}
-          onUpdateRigTemplate={(t) => {
-            pushHistory();
-            setState(s => ({
-              ...s,
-              rigTemplate: t,
-              activeParts: [...TEMPLATE_PARTS[t]],
-              partParents: { ...DEFAULT_HIERARCHIES[t] },
-              voxels: reprocessVoxels(s.voxels, t)
-            }));
-          }}
-          onUpdateAutoKeyframe={(a) => setState(s => ({ ...s, autoKeyframe: a }))}
-          onUpdatePartParent={(part, parent) => setState(s => ({ ...s, partParents: { ...s.partParents, [part]: parent } }))}
-          onAddBone={(p) => setState(s => ({ ...s, activeParts: [...s.activeParts, p] }))}
-          onRemoveBone={(p) => setState(s => ({ ...s, activeParts: s.activeParts.filter(x => x !== p) }))}
-          onApplyAnimationPreset={(p) => {
-            pushHistory();
-            setState(s => ({ ...s, keyframes: p.keyframes as any }));
-          }}
-          onApplyPreset={(p) => {
-            pushHistory();
-            setState(s => ({ ...s, config: p.config }));
-            setPendingCamera(p.camera);
-            setCameraTrigger(prev => prev + 1);
-          }}
-          onSavePreset={() => {}}
-          onSaveCamera={() => {
-            if (cameraStateRef.current) {
-              const name = prompt("Camera Name:", `View ${state.savedCameras.length + 1}`);
-              if (name) {
-                setState(s => ({
-                  ...s,
-                  savedCameras: [...s.savedCameras, { id: Date.now().toString(), name, config: cameraStateRef.current! }]
-                }));
-              }
-            }
-          }}
-          onUpdateCamera={() => {}}
-          onDeleteCamera={(id) => setState(s => ({ ...s, savedCameras: s.savedCameras.filter(c => c.id !== id) }))}
-          onSwitchCamera={(c) => {
-            setPendingCamera(c);
-            setCameraTrigger(prev => prev + 1);
-          }}
+          onTakeSnapshot={handleTakeSnapshot}
+          gridVisible={gridVisible}
+          onToggleGrid={() => setGridVisible(!gridVisible)}
+          onShowGuide={() => setShowGuide(true)}
           onLocalRecord={() => setShowExportModal(true)}
           onSaveProject={() => {
             const data = JSON.stringify(state);
@@ -532,49 +552,18 @@ const App: React.FC = () => {
             const text = await file.text();
             setState(JSON.parse(text));
           }}
-          isRecording={isRecording}
-          onTogglePartVisibility={togglePartVisibility}
-          onTogglePartLock={togglePartLock}
+          onFileUpload={handleFileUpload}
         />
-      )}
 
-      <main className="flex-1 relative bg-[#050505]">
-        <Toolbar 
-          uiVisible={uiVisible}
-          onToggleUI={() => setUiVisible(!uiVisible)}
-          canUndo={history.length > 0}
-          canRedo={redoStack.length > 0}
-          onUndo={handleUndo}
-          onRedo={handleRedo}
-          onTakeSnapshot={handleTakeSnapshot}
-          gridVisible={gridVisible}
-          onToggleGrid={() => setGridVisible(!gridVisible)}
+        <Timeline 
+          currentTime={state.currentTime}
+          keyframes={state.keyframes}
+          isPlaying={state.isPlaying}
+          onTimeChange={(t) => setState(s => ({ ...s, currentTime: t }))}
+          onTogglePlay={() => setState(s => ({ ...s, isPlaying: !s.isPlaying }))}
+          onAddKeyframe={handleAddKeyframe}
+          onMoveKeyframe={handleMoveKeyframe}
         />
-        
-        <Canvas shadows className="w-full h-full">
-          <SceneContent 
-            state={state}
-            gridVisible={gridVisible}
-            onGizmoChange={handleGizmoChange}
-            onGizmoStart={pushHistory}
-            onGizmoEnd={() => {}}
-            cameraTrigger={cameraTrigger}
-            pendingCamera={pendingCamera}
-            cameraStateRef={cameraStateRef}
-          />
-        </Canvas>
-
-        {uiVisible && (
-          <Timeline 
-            currentTime={state.currentTime}
-            keyframes={state.keyframes}
-            isPlaying={state.isPlaying}
-            onTimeChange={(t) => setState(s => ({ ...s, currentTime: t }))}
-            onTogglePlay={() => setState(s => ({ ...s, isPlaying: !s.isPlaying }))}
-            onAddKeyframe={handleAddKeyframe}
-            onMoveKeyframe={handleMoveKeyframe}
-          />
-        )}
       </main>
 
       {showExportModal && (
@@ -585,6 +574,10 @@ const App: React.FC = () => {
           onConfirm={handleConfirmExport}
           defaultPrompt={state.rigTemplate === RigTemplate.HUMANOID ? "a humanoid robot performing a graceful dance" : "a majestic voxel creature moving through a digital void"}
         />
+      )}
+
+      {showGuide && (
+        <GuideModal onClose={() => setShowGuide(false)} />
       )}
     </div>
   );

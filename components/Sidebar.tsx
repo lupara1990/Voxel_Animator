@@ -1,10 +1,11 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { AppState, RigPart, GizmoMode, InterpolationMode, Preset, RigTemplate, CameraConfig, AnimationPreset } from '../types';
 import { TEMPLATE_PARTS, HDRI_PRESETS, RIG_PARTS, ANIMATION_PRESETS } from '../constants';
 
 interface SidebarProps {
   state: AppState;
+  activePanel: 'anim' | 'rig' | 'layers' | 'scene' | null;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
@@ -39,14 +40,15 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
-  state, canUndo, canRedo, onUndo, onRedo, onUpdateConfig, onConfigInteractionStart,
+  state, activePanel, canUndo, canRedo, onUndo, onRedo, onUpdateConfig, onConfigInteractionStart,
   onFileUpload, onSelectPart, onUpdateTransform, onUpdateRestTransform, onTransformInteractionStart,
   onSetGizmoMode, onUpdateInterpolation, onUpdateRigTemplate, onUpdateAutoKeyframe, onUpdatePartParent,
   onAddBone, onRemoveBone, onApplyAnimationPreset, onApplyPreset, onSavePreset,
   onSaveCamera, onUpdateCamera, onDeleteCamera, onSwitchCamera, onLocalRecord, onSaveProject, onLoadProject, isRecording,
   onTogglePartVisibility, onTogglePartLock
 }) => {
-  const [activeTab, setActiveTab] = useState<'anim' | 'rig' | 'layers' | 'scene'>('anim');
+  if (!activePanel) return null;
+
   const currentKeyframe = state.keyframes.reduce((pk, ck) => (ck.time <= state.currentTime) ? ck : pk, state.keyframes[0]);
   const selectedTransform = state.selectedPart ? currentKeyframe?.transforms[state.selectedPart] : null;
   const selectedRest = state.selectedPart ? state.restTransforms[state.selectedPart] : null;
@@ -54,33 +56,22 @@ const Sidebar: React.FC<SidebarProps> = ({
   const unusedParts = RIG_PARTS.filter(p => !state.activeParts.includes(p));
 
   return (
-    <aside className="w-80 bg-neutral-900/80 backdrop-blur-xl border-r border-white/5 flex flex-col z-30 shadow-2xl overflow-y-auto">
-      <div className="p-6 border-b border-white/5 flex justify-between items-center bg-black/20">
+    <aside className="w-80 bg-neutral-900/80 backdrop-blur-3xl border-r border-white/10 flex flex-col z-40 shadow-[20px_0_50px_rgba(0,0,0,0.5)] overflow-hidden animate-in slide-in-from-left duration-300">
+      <div className="p-6 border-b border-white/5 flex justify-between items-center bg-black/40">
         <div>
-          <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">VOXAURA</h1>
-          <p className="text-[10px] text-white/30 tracking-[0.2em] uppercase mt-1 font-sans">Voxel Motion Studio</p>
+          <h1 className="text-sm font-black tracking-[0.3em] uppercase bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
+            {activePanel} PANEL
+          </h1>
         </div>
-        <div className="flex gap-2">
-          <button onClick={onUndo} disabled={!canUndo} className={`p-2 rounded-lg transition-colors border border-white/5 ${canUndo ? 'bg-white/5 text-white/80 hover:bg-white/10' : 'text-white/10 cursor-not-allowed'}`} title="Undo (Ctrl+Z)"><i className="fas fa-undo text-xs"></i></button>
-          <button onClick={onRedo} disabled={!canRedo} className={`p-2 rounded-lg transition-colors border border-white/5 ${canRedo ? 'bg-white/5 text-white/80 hover:bg-white/10' : 'text-white/10 cursor-not-allowed'}`} title="Redo (Ctrl+Shift+Z)"><i className="fas fa-redo text-xs"></i></button>
+        <div className="flex gap-1">
+          <button onClick={onUndo} disabled={!canUndo} className="p-2 text-white/20 hover:text-white disabled:opacity-0 transition-all"><i className="fas fa-undo-alt text-[10px]"></i></button>
+          <button onClick={onRedo} disabled={!canRedo} className="p-2 text-white/20 hover:text-white disabled:opacity-0 transition-all"><i className="fas fa-redo-alt text-[10px]"></i></button>
         </div>
       </div>
 
-      <div className="flex border-b border-white/5">
-        {(['anim', 'rig', 'layers', 'scene'] as const).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-3 text-[9px] font-bold uppercase tracking-widest transition-all ${activeTab === tab ? 'text-indigo-400 border-b-2 border-indigo-500' : 'text-white/40 hover:text-white/60'}`}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
-
-      <div className="p-6 space-y-8">
-        {activeTab === 'rig' && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-left-4 duration-300">
+      <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+        {activePanel === 'rig' && (
+          <div className="space-y-8">
             <section>
               <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-3">Model Import</label>
               <div className="relative group">
@@ -131,7 +122,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </section>
 
-            {state.selectedPart && (
+            {state.selectedPart && selectedRest && (
               <section className="animate-in fade-in slide-in-from-top-2 duration-300">
                 <div className="p-4 bg-white/5 rounded-2xl border border-white/10 space-y-6">
                   <div className="flex justify-between items-center">
@@ -165,11 +156,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                               min={type === 'position' ? -50 : -Math.PI} 
                               max={type === 'position' ? 50 : Math.PI} 
                               step={0.1}
-                              value={selectedRest![type as 'position' | 'rotation'][i]} 
+                              value={selectedRest[type as 'position' | 'rotation'][i]} 
                               onChange={(e) => onUpdateRestTransform(state.selectedPart!, type as any, i, parseFloat(e.target.value))}
                               className="flex-1 accent-indigo-500 h-1 bg-white/10 rounded-full appearance-none cursor-pointer"
                             />
-                            <span className="text-[10px] font-mono text-white/40 w-10 text-right">{selectedRest![type as 'position' | 'rotation'][i].toFixed(1)}</span>
+                            <span className="text-[10px] font-mono text-white/40 w-10 text-right">{selectedRest[type as 'position' | 'rotation'][i].toFixed(1)}</span>
                           </div>
                         ))}
                       </div>
@@ -181,8 +172,8 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {activeTab === 'layers' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
+        {activePanel === 'layers' && (
+          <div className="space-y-6">
              <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-1">Part Organization</label>
              <div className="space-y-1">
                {state.activeParts.map(part => (
@@ -216,8 +207,8 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {activeTab === 'anim' && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+        {activePanel === 'anim' && (
+          <div className="space-y-8">
             <section>
               <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-3">Templates</label>
               <div className="flex bg-white/5 p-1 rounded-xl border border-white/10">
@@ -313,8 +304,8 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {activeTab === 'scene' && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+        {activePanel === 'scene' && (
+          <div className="space-y-8">
             <section>
               <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-4">Environment Aesthetic</label>
               <div className="space-y-5 p-4 bg-white/5 rounded-xl border border-white/5">
@@ -469,23 +460,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <button onClick={() => onDeleteCamera(cam.id)} className="p-1.5 text-white/20 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"><i className="fas fa-trash-alt text-[8px]"></i></button>
                   </div>
                 ))}
-              </div>
-            </section>
-
-            <section>
-              <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-4">Export & Project</label>
-              <div className="space-y-2">
-                <button onClick={onLocalRecord} disabled={isRecording || state.voxels.length === 0} className={`w-full py-4 rounded-xl flex items-center justify-center gap-3 transition-all duration-300 ${isRecording ? 'bg-red-600 animate-pulse text-white' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl shadow-indigo-500/20 font-bold tracking-widest uppercase text-xs'}`}>
-                  <i className="fas fa-video"></i>
-                  <span>{isRecording ? 'Recording...' : 'Record Video'}</span>
-                </button>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={onSaveProject} className="py-3 px-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white transition-all flex items-center justify-center gap-2"><i className="fas fa-download"></i> Save</button>
-                  <div className="relative">
-                    <input type="file" accept=".json" onChange={onLoadProject} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                    <button className="w-full py-3 px-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white transition-all flex items-center justify-center gap-2"><i className="fas fa-upload"></i> Load</button>
-                  </div>
-                </div>
               </div>
             </section>
           </div>
