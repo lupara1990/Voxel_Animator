@@ -32,10 +32,8 @@ interface SidebarProps {
   onUpdateCamera: (id: string) => void;
   onDeleteCamera: (id: string) => void;
   onSwitchCamera: (config: CameraConfig) => void;
-  onLocalRecord: () => void;
   onSaveProject: () => void;
   onLoadProject: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  isRecording: boolean;
   onTogglePartVisibility: (part: RigPart) => void;
   onTogglePartLock: (part: RigPart) => void;
 }
@@ -45,7 +43,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onFileUpload, onSelectPart, onUpdateTransform, onUpdateRestTransform, onTransformInteractionStart,
   onSetGizmoMode, onUpdateInterpolation, onUpdateRigTemplate, onUpdateAutoKeyframe, onUpdatePartParent,
   onAddBone, onRemoveBone, onApplyAnimationPreset, onApplyPreset, onSavePreset,
-  onSaveCamera, onUpdateCamera, onDeleteCamera, onSwitchCamera, onLocalRecord, onSaveProject, onLoadProject, isRecording,
+  onSaveCamera, onUpdateCamera, onDeleteCamera, onSwitchCamera, onSaveProject, onLoadProject,
   onTogglePartVisibility, onTogglePartLock
 }) => {
   if (!activePanel) return null;
@@ -84,12 +82,10 @@ const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </section>
 
-            {/* Global Model Transform Section */}
             <section className="p-4 bg-indigo-600/5 rounded-2xl border border-indigo-500/20 space-y-4">
               <label className="text-[11px] font-bold text-indigo-400 uppercase tracking-widest block">Global Model Transform</label>
               
               <div className="space-y-4">
-                {/* Scale */}
                 <div>
                   <div className="flex justify-between mb-1">
                     <span className="text-[9px] text-white/40 uppercase tracking-tighter">Uniform Scale</span>
@@ -103,7 +99,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                   />
                 </div>
 
-                {/* Position */}
                 <div className="space-y-2">
                   <span className="text-[9px] text-white/20 uppercase tracking-widest block">World Position</span>
                   {['X', 'Y', 'Z'].map((axis, i) => (
@@ -123,7 +118,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                   ))}
                 </div>
 
-                {/* Rotation */}
                 <div className="space-y-2">
                   <span className="text-[9px] text-white/20 uppercase tracking-widest block">World Rotation</span>
                   {['X', 'Y', 'Z'].map((axis, i) => (
@@ -386,16 +380,50 @@ const Sidebar: React.FC<SidebarProps> = ({
                 
                 <div>
                   <div className="flex justify-between mb-2">
+                    <span className="text-[10px] text-white/40 uppercase tracking-tighter">Main Light Color</span>
+                  </div>
+                  <input 
+                    type="color"
+                    value={state.config.lightColor}
+                    onMouseDown={onConfigInteractionStart}
+                    onChange={(e) => onUpdateConfig({ lightColor: e.target.value })}
+                    className="w-full h-8 bg-transparent cursor-pointer rounded overflow-hidden border border-white/10"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-2">
                     <span className="text-[10px] text-white/40 uppercase tracking-tighter">Light Intensity</span>
                     <span className="text-[10px] font-mono text-indigo-400">{state.config.lightIntensity.toFixed(1)}</span>
                   </div>
                   <input 
-                    type="range" min="0" max="5" step="0.1"
+                    type="range" min="0" max="10" step="0.1"
                     onMouseDown={onConfigInteractionStart}
                     value={state.config.lightIntensity}
                     onChange={(e) => onUpdateConfig({ lightIntensity: parseFloat(e.target.value) })}
                     className="w-full h-1 bg-white/10 rounded-full appearance-none accent-indigo-500"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <span className="text-[9px] text-white/20 uppercase tracking-widest block">Light Position</span>
+                  {['X', 'Y', 'Z'].map((axis, i) => (
+                    <div key={axis} className="flex items-center gap-3">
+                      <span className="text-[10px] font-bold text-white/20 w-3 font-mono">{axis}</span>
+                      <input 
+                        type="range" min="-100" max="100" step="1"
+                        onMouseDown={onConfigInteractionStart}
+                        value={state.config.lightPosition[i]}
+                        onChange={(e) => {
+                          const pos = [...state.config.lightPosition];
+                          pos[i] = parseFloat(e.target.value);
+                          onUpdateConfig({ lightPosition: pos });
+                        }}
+                        className="flex-1 accent-indigo-500 h-1 bg-white/10 rounded-full appearance-none cursor-pointer"
+                      />
+                      <span className="text-[10px] font-mono text-white/40 w-8 text-right">{state.config.lightPosition[i].toFixed(0)}</span>
+                    </div>
+                  ))}
                 </div>
 
                 <div>
@@ -410,6 +438,66 @@ const Sidebar: React.FC<SidebarProps> = ({
                     onChange={(e) => onUpdateConfig({ aoIntensity: parseFloat(e.target.value) })}
                     className="w-full h-1 bg-white/10 rounded-full appearance-none accent-indigo-500"
                   />
+                </div>
+
+                <div className="pt-4 border-t border-white/5 space-y-4">
+                  <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-[0.2em] block">Color Grading</span>
+                  
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <span className="text-[10px] text-white/40 uppercase tracking-tighter">Saturation</span>
+                      <span className="text-[10px] font-mono text-indigo-400">{state.config.saturation.toFixed(2)}</span>
+                    </div>
+                    <input 
+                      type="range" min="-1" max="1" step="0.01"
+                      onMouseDown={onConfigInteractionStart}
+                      value={state.config.saturation}
+                      onChange={(e) => onUpdateConfig({ saturation: parseFloat(e.target.value) })}
+                      className="w-full h-1 bg-white/10 rounded-full appearance-none accent-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <span className="text-[10px] text-white/40 uppercase tracking-tighter">Contrast</span>
+                      <span className="text-[10px] font-mono text-indigo-400">{state.config.contrast.toFixed(2)}</span>
+                    </div>
+                    <input 
+                      type="range" min="-1" max="1" step="0.01"
+                      onMouseDown={onConfigInteractionStart}
+                      value={state.config.contrast}
+                      onChange={(e) => onUpdateConfig({ contrast: parseFloat(e.target.value) })}
+                      className="w-full h-1 bg-white/10 rounded-full appearance-none accent-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <span className="text-[10px] text-white/40 uppercase tracking-tighter">Hue Shift</span>
+                      <span className="text-[10px] font-mono text-indigo-400">{(state.config.hue * (180 / Math.PI)).toFixed(0)}°</span>
+                    </div>
+                    <input 
+                      type="range" min={-Math.PI} max={Math.PI} step={0.01}
+                      onMouseDown={onConfigInteractionStart}
+                      value={state.config.hue}
+                      onChange={(e) => onUpdateConfig({ hue: parseFloat(e.target.value) })}
+                      className="w-full h-1 bg-white/10 rounded-full appearance-none accent-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <span className="text-[10px] text-white/40 uppercase tracking-tighter">Brightness</span>
+                      <span className="text-[10px] font-mono text-indigo-400">{state.config.brightness.toFixed(2)}</span>
+                    </div>
+                    <input 
+                      type="range" min="-1" max="1" step="0.01"
+                      onMouseDown={onConfigInteractionStart}
+                      value={state.config.brightness}
+                      onChange={(e) => onUpdateConfig({ brightness: parseFloat(e.target.value) })}
+                      className="w-full h-1 bg-white/10 rounded-full appearance-none accent-indigo-500"
+                    />
+                  </div>
                 </div>
                 
                 <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 mb-4">

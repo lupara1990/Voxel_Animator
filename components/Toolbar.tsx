@@ -12,7 +12,7 @@ interface ToolbarProps {
   gridVisible: boolean;
   onToggleGrid: () => void;
   onShowGuide: () => void;
-  onLocalRecord: () => void;
+  onOpenExport: () => void;
   onSaveProject: () => void;
   onLoadProject: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -29,7 +29,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
   gridVisible,
   onToggleGrid,
   onShowGuide,
-  onLocalRecord,
+  onOpenExport,
   onSaveProject,
   onLoadProject,
   onFileUpload
@@ -63,102 +63,119 @@ const Toolbar: React.FC<ToolbarProps> = ({
       `}
     >
       <i className={`fas ${icon} text-lg transition-transform group-hover:scale-110`}></i>
-      <span className="text-[8px] font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 absolute -top-8 bg-neutral-900 px-2 py-1 rounded border border-white/10 pointer-events-none transition-opacity whitespace-nowrap">
+      <span className="text-[8px] font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 absolute top-full mt-3 bg-neutral-900 px-2 py-1 rounded border border-white/10 pointer-events-none transition-opacity whitespace-nowrap">
         {label}
       </span>
     </button>
   );
 
   return (
-    <div className="absolute bottom-36 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 p-1.5 bg-neutral-900/60 backdrop-blur-3xl border border-white/10 rounded-[2rem] shadow-2xl pointer-events-auto transition-all duration-500 hover:bg-neutral-900/80 hover:border-white/20">
+    <div className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-6 h-16 bg-neutral-900/80 backdrop-blur-3xl border-b border-white/10 shadow-2xl pointer-events-auto">
       
-      {/* File Group */}
-      <div className="flex items-center gap-1 pr-2 mr-1 border-r border-white/10">
-        <ToolButton 
-          icon="fa-file-import" 
-          label="Import .VOX" 
-          onClick={() => fileInputRef.current?.click()} 
-        />
-        <input ref={fileInputRef} type="file" accept=".vox" onChange={onFileUpload} className="hidden" />
-        
-        <div className="flex flex-col gap-1">
-          <button onClick={onSaveProject} className="w-8 h-6 flex items-center justify-center rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition-all"><i className="fas fa-save text-[10px]"></i></button>
-          <button onClick={() => loadInputRef.current?.click()} className="w-8 h-6 flex items-center justify-center rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition-all"><i className="fas fa-folder-open text-[10px]"></i></button>
+      {/* Left: Brand & File */}
+      <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <i className="fas fa-cube text-white text-sm"></i>
+          </div>
+          <span className="text-sm font-black tracking-tighter uppercase hidden sm:block">VoxAura</span>
+        </div>
+
+        <div className="h-6 w-px bg-white/10 mx-2"></div>
+
+        <div className="flex items-center gap-1">
+          <ToolButton 
+            icon="fa-file-import" 
+            label="Import .VOX" 
+            onClick={() => fileInputRef.current?.click()} 
+          />
+          <input ref={fileInputRef} type="file" accept=".vox" onChange={onFileUpload} className="hidden" />
+          
+          <ToolButton 
+            icon="fa-save" 
+            label="Save Project" 
+            onClick={onSaveProject} 
+          />
+          <ToolButton 
+            icon="fa-folder-open" 
+            label="Load Project" 
+            onClick={() => loadInputRef.current?.click()} 
+          />
           <input ref={loadInputRef} type="file" accept=".json" onChange={onLoadProject} className="hidden" />
         </div>
       </div>
 
-      {/* Edit Group */}
-      <div className="flex items-center gap-1 pr-2 mr-1 border-r border-white/10">
-        <ToolButton 
-          icon="fa-undo-alt" 
-          label="Undo" 
-          onClick={onUndo} 
-          disabled={!canUndo} 
-        />
-        <ToolButton 
-          icon="fa-redo-alt" 
-          label="Redo" 
-          onClick={onRedo} 
-          disabled={!canRedo} 
-        />
+      {/* Center: Panels */}
+      <div className="flex items-center gap-1 bg-black/20 p-1 rounded-2xl border border-white/5">
+        <button 
+          onClick={() => onTogglePanel('rig')}
+          className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activePanel === 'rig' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+        >
+          Rigging
+        </button>
+        <button 
+          onClick={() => onTogglePanel('anim')}
+          className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activePanel === 'anim' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+        >
+          Animation
+        </button>
+        <button 
+          onClick={() => onTogglePanel('layers')}
+          className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activePanel === 'layers' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+        >
+          Layers
+        </button>
+        <button 
+          onClick={() => onTogglePanel('scene')}
+          className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activePanel === 'scene' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+        >
+          Scene
+        </button>
       </div>
 
-      {/* Panels Group */}
-      <div className="flex items-center gap-1 pr-2 mr-1 border-r border-white/10">
-        <ToolButton 
-          icon="fa-cubes" 
-          label="Rigging" 
-          onClick={() => onTogglePanel('rig')} 
-          active={activePanel === 'rig'}
-        />
-        <ToolButton 
-          icon="fa-running" 
-          label="Animation" 
-          onClick={() => onTogglePanel('anim')} 
-          active={activePanel === 'anim'}
-        />
-        <ToolButton 
-          icon="fa-layer-group" 
-          label="Layers" 
-          onClick={() => onTogglePanel('layers')} 
-          active={activePanel === 'layers'}
-        />
-        <ToolButton 
-          icon="fa-palette" 
-          label="Scene" 
-          onClick={() => onTogglePanel('scene')} 
-          active={activePanel === 'scene'}
-        />
-      </div>
+      {/* Right: Actions */}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 pr-3 border-r border-white/10">
+          <ToolButton 
+            icon="fa-undo-alt" 
+            label="Undo" 
+            onClick={onUndo} 
+            disabled={!canUndo} 
+          />
+          <ToolButton 
+            icon="fa-redo-alt" 
+            label="Redo" 
+            onClick={onRedo} 
+            disabled={!canRedo} 
+          />
+        </div>
 
-      {/* View/Render Group */}
-      <div className="flex items-center gap-1 pr-2 mr-1 border-r border-white/10">
-        <ToolButton 
-          icon="fa-border-all" 
-          label="Grid" 
-          onClick={onToggleGrid} 
-          active={gridVisible}
-        />
-        <ToolButton 
-          icon="fa-camera" 
-          label="Snapshot" 
-          onClick={onTakeSnapshot} 
-        />
-        <ToolButton 
-          icon="fa-film" 
-          label="Render" 
-          onClick={onLocalRecord} 
-          active={false}
-          danger={false}
-        />
-      </div>
+        <div className="flex items-center gap-1">
+          <ToolButton 
+            icon="fa-border-all" 
+            label="Grid" 
+            onClick={onToggleGrid} 
+            active={gridVisible}
+          />
+          <ToolButton 
+            icon="fa-camera" 
+            label="Snapshot" 
+            onClick={onTakeSnapshot} 
+          />
+          <button 
+            onClick={onOpenExport}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all shadow-lg shadow-indigo-500/20 active:scale-95 ml-2"
+          >
+            <i className="fas fa-video text-xs"></i>
+            <span className="text-[10px] font-bold uppercase tracking-widest">Export Video</span>
+          </button>
+        </div>
 
-      {/* Help Group */}
-      <div className="pl-1">
+        <div className="h-6 w-px bg-white/10 mx-2"></div>
+
         <ToolButton 
           icon="fa-question-circle" 
-          label="Help Guide" 
+          label="Help" 
           onClick={onShowGuide} 
         />
       </div>

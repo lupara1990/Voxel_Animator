@@ -7,6 +7,7 @@ export const DEFAULT_CONFIG: SceneConfig = {
   aoIntensity: 1.0,
   lightIntensity: 1.5,
   lightColor: '#ffffff',
+  lightPosition: [20, 50, 20],
   backgroundColor: '#0a0a0a',
   backgroundType: 'color',
   environmentPreset: 'city',
@@ -18,6 +19,10 @@ export const DEFAULT_CONFIG: SceneConfig = {
   voxelsCastShadows: true,
   voxelsReceiveShadows: true,
   contactShadowOpacity: 0.6,
+  saturation: 0,
+  contrast: 0,
+  hue: 0,
+  brightness: 0,
 };
 
 export const HDRI_PRESETS = [

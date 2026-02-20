@@ -53,6 +53,7 @@ export interface SceneConfig {
   aoIntensity: number;
   lightIntensity: number;
   lightColor: string;
+  lightPosition: [number, number, number];
   backgroundColor: string;
   // Environment Mapping
   backgroundType: 'color' | 'hdri';
@@ -67,6 +68,11 @@ export interface SceneConfig {
   voxelsCastShadows: boolean;
   voxelsReceiveShadows: boolean;
   contactShadowOpacity: number;
+  // Color Grading
+  saturation: number;
+  contrast: number;
+  hue: number;
+  brightness: number;
 }
 
 export interface Keyframe {

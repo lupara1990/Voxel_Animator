@@ -4,14 +4,13 @@ import { useFrame, ThreeElements } from '@react-three/fiber';
 import * as THREE from 'three';
 import { VoxelData, Keyframe, RigPart, InterpolationMode } from '../types';
 
-// Fix JSX intrinsic element errors by extending the global JSX and React.JSX namespaces with Three.js elements
+// Fix JSX intrinsic element errors by extending the global JSX namespace.
+// This ensures that Three.js elements used in R3F (like <mesh />, <group />, etc.) 
+// are recognized by the TypeScript compiler.
 declare global {
   namespace JSX {
-    interface IntrinsicElements extends ThreeElements {}
-  }
-  namespace React {
-    namespace JSX {
-      interface IntrinsicElements extends ThreeElements {}
+    interface IntrinsicElements extends ThreeElements {
+      color: any;
     }
   }
 }
@@ -146,26 +145,21 @@ const VoxelModel: React.FC<VoxelModelProps> = ({
   }, [voxels]);
 
   return (
-    // Added fix for intrinsic group element
     <group ref={modelRootRef}>
       {(Object.entries(voxelGroups) as [string, VoxelData[]][]).map(([part, partVoxels]) => (
-        // Added fix for intrinsic group element
         <group 
           key={part} 
           name={`part-${part}`}
           ref={(el) => groupRefs.current[part] = el}
         >
           {partVoxels.map((v, i) => (
-            // Added fix for intrinsic mesh element
             <mesh 
               key={i} 
               position={[v.x + centerModel.x, v.z + centerModel.z, v.y + centerModel.y]} 
               castShadow={castShadow}
               receiveShadow={receiveShadow}
             >
-              {/* Added fix for intrinsic boxGeometry element */}
               <boxGeometry args={[1, 1, 1]} />
-              {/* Added fix for intrinsic meshStandardMaterial element */}
               <meshStandardMaterial color={v.color} roughness={0.1} metalness={0.2} />
             </mesh>
           ))}

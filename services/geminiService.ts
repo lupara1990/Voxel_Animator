@@ -1,45 +1,25 @@
 
-import { GoogleGenAI } from "@google/genai";
-
-export const generateVoxAnimationVideo = async (
-  prompt: string, 
-  base64Image: string,
-  resolution: '720p' | '1080p' = '1080p',
-  aspectRatio: '16:9' | '9:16' = '16:9'
-): Promise<string | null> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  try {
-    let operation = await ai.models.generateVideos({
-      model: 'veo-3.1-fast-generate-preview',
-      prompt: `A high-detailed minimalist voxel animation of ${prompt}. Smooth fluid movements, cinematic soft lighting, clean background, artistic voxel aesthetic.`,
-      image: {
-        imageBytes: base64Image.split(',')[1],
-        mimeType: 'image/png',
-      },
-      config: {
-        numberOfVideos: 1,
-        resolution: resolution,
-        aspectRatio: aspectRatio
-      }
+/**
+ * Video Export Service
+ * Handles canvas recording and processing.
+ */
+export const exportCanvasToVideo = async (canvas: HTMLCanvasElement, duration: number) => {
+  return new Promise<string>((resolve, reject) => {
+    const stream = canvas.captureStream(30);
+    const recorder = new MediaRecorder(stream, {
+      mimeType: 'video/webm;codecs=vp9'
     });
-
-    while (!operation.done) {
-      await new Promise(resolve => setTimeout(resolve, 10000));
-      operation = await ai.operations.getVideosOperation({ operation: operation });
-    }
-
-    const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-    if (!downloadLink) return null;
-
-    const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
-    const blob = await response.blob();
-    return URL.createObjectURL(blob);
-  } catch (error) {
-    console.error("Video Generation Error:", error);
-    if (error.message?.includes("Requested entity was not found")) {
-        throw new Error("RESELECT_KEY");
-    }
-    return null;
-  }
+    
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (e) => chunks.push(e.data);
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: 'video/webm' });
+      resolve(URL.createObjectURL(blob));
+    };
+    
+    recorder.start();
+    setTimeout(() => {
+      recorder.stop();
+    }, duration * 1000);
+  });
 };

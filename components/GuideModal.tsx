@@ -26,11 +26,6 @@ const GuideModal: React.FC<GuideModalProps> = ({ onClose }) => {
       title: "4. Cinematic Staging",
       desc: "Switch to the Scene Panel. Adjust HDRI environments, soft shadows, and bloom to achieve a high-end minimalist aesthetic.",
       icon: "fa-palette"
-    },
-    {
-      title: "5. Render with Gemini Veo",
-      desc: "Hit 'Render' in the toolbar. Describe your desired cinematic look, and let Gemini generate a high-quality video of your motion.",
-      icon: "fa-film"
     }
   ];
 
