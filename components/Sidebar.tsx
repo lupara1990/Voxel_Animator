@@ -36,6 +36,7 @@ interface SidebarProps {
   onLoadProject: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onTogglePartVisibility: (part: RigPart) => void;
   onTogglePartLock: (part: RigPart) => void;
+  onOpenRigEditor: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -44,7 +45,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSetGizmoMode, onUpdateInterpolation, onUpdateRigTemplate, onUpdateAutoKeyframe, onUpdatePartParent,
   onAddBone, onRemoveBone, onApplyAnimationPreset, onApplyPreset, onSavePreset,
   onSaveCamera, onUpdateCamera, onDeleteCamera, onSwitchCamera, onSaveProject, onLoadProject,
-  onTogglePartVisibility, onTogglePartLock
+  onTogglePartVisibility, onTogglePartLock, onOpenRigEditor
 }) => {
   if (!activePanel) return null;
 
@@ -142,16 +143,24 @@ const Sidebar: React.FC<SidebarProps> = ({
             <section>
               <div className="flex justify-between items-center mb-3">
                 <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest">Rig Construction</label>
-                <select 
-                  onChange={(e) => {
-                    if (e.target.value) onAddBone(e.target.value as RigPart);
-                    e.target.value = '';
-                  }}
-                  className="bg-indigo-600/20 text-indigo-400 text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded border border-indigo-500/50 outline-none"
-                >
-                  <option value="">+ Add Bone</option>
-                  {unusedParts.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={onOpenRigEditor}
+                    className="px-2 py-1 bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/50 rounded text-[9px] font-bold uppercase tracking-widest transition-all"
+                  >
+                    <i className="fas fa-project-diagram mr-1"></i> Visual Editor
+                  </button>
+                  <select 
+                    onChange={(e) => {
+                      if (e.target.value) onAddBone(e.target.value as RigPart);
+                      e.target.value = '';
+                    }}
+                    className="bg-indigo-600/20 text-indigo-400 text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded border border-indigo-500/50 outline-none"
+                  >
+                    <option value="">+ Add Bone</option>
+                    {unusedParts.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
               </div>
 
               <div className="space-y-1 max-h-64 overflow-y-auto pr-2 custom-scrollbar">

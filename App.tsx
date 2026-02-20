@@ -14,6 +14,7 @@ import Timeline from './components/Timeline';
 import Toolbar from './components/Toolbar';
 import GuideModal from './components/GuideModal';
 import ExportModal from './components/ExportModal';
+import RigNodeEditor from './components/RigNodeEditor';
 
 // Fix JSX intrinsic element errors by extending the global JSX namespace.
 // This ensures that Three.js elements used in R3F (like <mesh />, <group />, etc.) 
@@ -280,6 +281,7 @@ const App: React.FC = () => {
   const cameraStateRef = useRef<CameraConfig | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showRigEditor, setShowRigEditor] = useState(false);
   const [exportConfig, setExportConfig] = useState<{ resolution: '720p' | '1080p'; aspectRatio: '16:9' | '9:16' }>({
     resolution: '720p',
     aspectRatio: '16:9'
@@ -580,6 +582,7 @@ const App: React.FC = () => {
           }}
           onTogglePartVisibility={togglePartVisibility}
           onTogglePartLock={togglePartLock}
+          onOpenRigEditor={() => setShowRigEditor(true)}
         />
 
         <main className="flex-1 relative bg-[#050505]">
@@ -648,6 +651,17 @@ const App: React.FC = () => {
               setIsExporting(false);
             }
           }}
+        />
+      )}
+
+      {showRigEditor && (
+        <RigNodeEditor 
+          state={state}
+          onClose={() => setShowRigEditor(false)}
+          onUpdatePartParent={(part, parent) => setState(s => ({ ...s, partParents: { ...s.partParents, [part]: parent } }))}
+          onSelectPart={(p) => setState(s => ({ ...s, selectedPart: p }))}
+          onAddBone={(p) => setState(s => ({ ...s, activeParts: [...s.activeParts, p] }))}
+          onRemoveBone={(p) => setState(s => ({ ...s, activeParts: s.activeParts.filter(x => x !== p) }))}
         />
       )}
     </div>
