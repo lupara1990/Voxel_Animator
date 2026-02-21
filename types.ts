@@ -23,6 +23,23 @@ export enum RigPart {
   LEG_FR = 'LEG_FR',
   LEG_BL = 'LEG_BL',
   LEG_BR = 'LEG_BR',
+  // Bird
+  WING_L = 'WING_L',
+  WING_R = 'WING_R',
+  // Spider / Multi-leg
+  LEG_1L = 'LEG_1L',
+  LEG_1R = 'LEG_1R',
+  LEG_2L = 'LEG_2L',
+  LEG_2R = 'LEG_2R',
+  LEG_3L = 'LEG_3L',
+  LEG_3R = 'LEG_3R',
+  LEG_4L = 'LEG_4L',
+  LEG_4R = 'LEG_4R',
+  // Vehicle
+  WHEEL_FL = 'WHEEL_FL',
+  WHEEL_FR = 'WHEEL_FR',
+  WHEEL_BL = 'WHEEL_BL',
+  WHEEL_BR = 'WHEEL_BR',
   // Generic / Abstract
   P1 = 'P1',
   P2 = 'P2',
@@ -39,6 +56,9 @@ export enum RigTemplate {
   QUADRUPED = 'QUADRUPED',
   GENERIC = 'GENERIC',
   CUSTOM = 'CUSTOM',
+  SPIDER = 'SPIDER',
+  BIRD = 'BIRD',
+  VEHICLE = 'VEHICLE',
 }
 
 export enum InterpolationMode {

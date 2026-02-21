@@ -24,12 +24,52 @@ interface VoxelModelProps {
   castShadow?: boolean;
   receiveShadow?: boolean;
   hiddenParts?: RigPart[];
+  activeParts: RigPart[];
+  selectedPart?: RigPart | null;
+  showSkeleton?: boolean;
   modelTransform?: {
     position: [number, number, number];
     rotation: [number, number, number];
     scale: number;
   };
 }
+
+const Bone: React.FC<{ from: THREE.Vector3; to: THREE.Vector3; isSelected?: boolean }> = ({ from, to, isSelected }) => {
+  const direction = new THREE.Vector3().subVectors(to, from);
+  const length = direction.length();
+  
+  if (length < 0.1) return null;
+
+  const quaternion = new THREE.Quaternion().setFromUnitVectors(
+    new THREE.Vector3(0, 1, 0),
+    direction.clone().normalize()
+  );
+
+  return (
+    <group position={from.toArray()} renderOrder={999}>
+      <mesh quaternion={quaternion} position={[0, length / 2, 0]}>
+        <coneGeometry args={[0.2, length, 4]} />
+        <meshStandardMaterial 
+          color={isSelected ? "#6366f1" : "#ffffff"} 
+          emissive={isSelected ? "#6366f1" : "#ffffff"}
+          emissiveIntensity={isSelected ? 1 : 0.2}
+          transparent 
+          opacity={0.8} 
+          depthTest={false}
+        />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[0.25, 16, 16]} />
+        <meshStandardMaterial 
+          color={isSelected ? "#6366f1" : "#ffffff"} 
+          emissive={isSelected ? "#6366f1" : "#ffffff"}
+          emissiveIntensity={isSelected ? 1 : 0.2}
+          depthTest={false} 
+        />
+      </mesh>
+    </group>
+  );
+};
 
 const easeInOutCubic = (t: number): number => {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -44,10 +84,14 @@ const VoxelModel: React.FC<VoxelModelProps> = ({
   castShadow = true, 
   receiveShadow = true, 
   hiddenParts = [],
+  activeParts = [],
+  selectedPart = null,
+  showSkeleton = true,
   modelTransform = { position: [0, 0, 0], rotation: [0, 0, 0], scale: 0.5 }
 }) => {
   const groupRefs = useRef<Record<string, THREE.Group | null>>({});
   const modelRootRef = useRef<THREE.Group>(null);
+  const [bonePositions, setBonePositions] = React.useState<Record<string, THREE.Vector3>>({});
 
   const voxelGroups = useMemo(() => {
     const groups: Record<RigPart, VoxelData[]> = {} as any;
@@ -100,6 +144,8 @@ const VoxelModel: React.FC<VoxelModelProps> = ({
       t = easeInOutCubic(t);
     }
 
+    const newBonePositions: Record<string, THREE.Vector3> = {};
+
     Object.keys(prev.transforms).forEach((p) => {
       const part = p as RigPart;
       const group = groupRefs.current[part];
@@ -126,7 +172,14 @@ const VoxelModel: React.FC<VoxelModelProps> = ({
         rest.rotation[1] + THREE.MathUtils.lerp(pRot[1], nRot[1], t),
         rest.rotation[2] + THREE.MathUtils.lerp(pRot[2], nRot[2], t)
       );
+
+      // Store world position for skeleton rendering
+      const worldPos = new THREE.Vector3();
+      group.getWorldPosition(worldPos);
+      newBonePositions[part] = worldPos;
     });
+
+    setBonePositions(newBonePositions);
 
     // Apply global model transform
     if (modelRootRef.current) {
@@ -145,26 +198,77 @@ const VoxelModel: React.FC<VoxelModelProps> = ({
   }, [voxels]);
 
   return (
-    <group ref={modelRootRef}>
-      {(Object.entries(voxelGroups) as [string, VoxelData[]][]).map(([part, partVoxels]) => (
-        <group 
-          key={part} 
-          name={`part-${part}`}
-          ref={(el) => groupRefs.current[part] = el}
-        >
-          {partVoxels.map((v, i) => (
-            <mesh 
-              key={i} 
-              position={[v.x + centerModel.x, v.z + centerModel.z, v.y + centerModel.y]} 
-              castShadow={castShadow}
-              receiveShadow={receiveShadow}
-            >
-              <boxGeometry args={[1, 1, 1]} />
-              <meshStandardMaterial color={v.color} roughness={0.1} metalness={0.2} />
-            </mesh>
-          ))}
+    <group>
+      <group ref={modelRootRef}>
+        {(Object.entries(voxelGroups) as [string, VoxelData[]][]).map(([part, partVoxels]) => (
+          <group 
+            key={part} 
+            name={`part-${part}`}
+            ref={(el) => groupRefs.current[part] = el}
+          >
+            {partVoxels.map((v, i) => (
+              <mesh 
+                key={i} 
+                position={[v.x + centerModel.x, v.z + centerModel.z, v.y + centerModel.y]} 
+                castShadow={castShadow}
+                receiveShadow={receiveShadow}
+              >
+                <boxGeometry args={[1, 1, 1]} />
+                <meshStandardMaterial color={v.color} roughness={0.1} metalness={0.2} />
+              </mesh>
+            ))}
+          </group>
+        ))}
+      </group>
+
+      {showSkeleton && (
+        <group>
+          {activeParts.map((part: RigPart) => {
+            if (!bonePositions[part]) return null;
+            
+            const children = activeParts.filter((p: RigPart) => partParents[p] === part);
+            const isSelected = selectedPart === part;
+
+            if (children.length > 0) {
+              return children.map((child: RigPart) => {
+                if (!bonePositions[child]) return null;
+                return (
+                  <Bone 
+                    key={`${part}-${child}`} 
+                    from={bonePositions[part]} 
+                    to={bonePositions[child]} 
+                    isSelected={isSelected || selectedPart === child}
+                  />
+                );
+              });
+            } else {
+              // Terminal bone - point towards the center of its voxels
+              const partVoxels = voxelGroups[part];
+              if (!partVoxels || partVoxels.length === 0) return null;
+              
+              // Calculate average position of voxels in this part (relative to pivot)
+              const avgX = partVoxels.reduce((sum: number, v: VoxelData) => sum + v.x, 0) / partVoxels.length;
+              const avgY = partVoxels.reduce((sum: number, v: VoxelData) => sum + v.y, 0) / partVoxels.length;
+              const avgZ = partVoxels.reduce((sum: number, v: VoxelData) => sum + v.z, 0) / partVoxels.length;
+              
+              const tipLocal = new THREE.Vector3(avgX + centerModel.x, avgZ + centerModel.z, avgY + centerModel.y);
+              const group = groupRefs.current[part];
+              if (!group) return null;
+              
+              const tipWorld = tipLocal.clone().applyMatrix4(group.matrixWorld);
+              
+              return (
+                <Bone 
+                  key={`terminal-${part}`} 
+                  from={bonePositions[part]} 
+                  to={tipWorld} 
+                  isSelected={isSelected}
+                />
+              );
+            }
+          })}
         </group>
-      ))}
+      )}
     </group>
   );
 };

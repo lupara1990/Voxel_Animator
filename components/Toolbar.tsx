@@ -11,6 +11,8 @@ interface ToolbarProps {
   onTakeSnapshot: () => void;
   gridVisible: boolean;
   onToggleGrid: () => void;
+  skeletonVisible: boolean;
+  onToggleSkeleton: () => void;
   onShowGuide: () => void;
   onOpenExport: () => void;
   onSaveProject: () => void;
@@ -28,6 +30,8 @@ const Toolbar: React.FC<ToolbarProps> = ({
   onTakeSnapshot,
   gridVisible,
   onToggleGrid,
+  skeletonVisible,
+  onToggleSkeleton,
   onShowGuide,
   onOpenExport,
   onSaveProject,
@@ -156,6 +160,12 @@ const Toolbar: React.FC<ToolbarProps> = ({
             label="Grid" 
             onClick={onToggleGrid} 
             active={gridVisible}
+          />
+          <ToolButton 
+            icon="fa-bone" 
+            label="Skeleton" 
+            onClick={onToggleSkeleton} 
+            active={skeletonVisible}
           />
           <ToolButton 
             icon="fa-camera" 

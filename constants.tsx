@@ -44,6 +44,9 @@ export const INITIAL_REST_TRANSFORMS: Record<RigPart, { position: [number, numbe
 export const TEMPLATE_PARTS: Record<RigTemplate, RigPart[]> = {
   [RigTemplate.HUMANOID]: [RigPart.ROOT, RigPart.HEAD, RigPart.BODY, RigPart.ARM_L, RigPart.ARM_R, RigPart.LEG_L, RigPart.LEG_R],
   [RigTemplate.QUADRUPED]: [RigPart.ROOT, RigPart.HEAD, RigPart.NECK, RigPart.BODY, RigPart.TAIL, RigPart.LEG_FL, RigPart.LEG_FR, RigPart.LEG_BL, RigPart.LEG_BR],
+  [RigTemplate.SPIDER]: [RigPart.ROOT, RigPart.BODY, RigPart.HEAD, RigPart.LEG_1L, RigPart.LEG_1R, RigPart.LEG_2L, RigPart.LEG_2R, RigPart.LEG_3L, RigPart.LEG_3R, RigPart.LEG_4L, RigPart.LEG_4R],
+  [RigTemplate.BIRD]: [RigPart.ROOT, RigPart.BODY, RigPart.HEAD, RigPart.NECK, RigPart.WING_L, RigPart.WING_R, RigPart.TAIL, RigPart.LEG_L, RigPart.LEG_R],
+  [RigTemplate.VEHICLE]: [RigPart.ROOT, RigPart.BODY, RigPart.WHEEL_FL, RigPart.WHEEL_FR, RigPart.WHEEL_BL, RigPart.WHEEL_BR],
   [RigTemplate.GENERIC]: [RigPart.ROOT, RigPart.P1, RigPart.P2, RigPart.P3, RigPart.P4, RigPart.P5, RigPart.P6, RigPart.P7, RigPart.P8],
   [RigTemplate.CUSTOM]: [RigPart.ROOT],
 };
@@ -60,6 +63,27 @@ export const DEFAULT_HIERARCHIES: Record<RigTemplate, Record<RigPart, RigPart | 
     else if (part === RigPart.NECK) acc[part] = RigPart.BODY;
     else if (part === RigPart.HEAD) acc[part] = RigPart.NECK;
     else if ([RigPart.TAIL, RigPart.LEG_FL, RigPart.LEG_FR, RigPart.LEG_BL, RigPart.LEG_BR].includes(part)) acc[part] = RigPart.BODY;
+    else acc[part] = null;
+    return acc;
+  }, {} as any),
+  [RigTemplate.SPIDER]: RIG_PARTS.reduce((acc, part) => {
+    if (part === RigPart.BODY) acc[part] = RigPart.ROOT;
+    else if (part === RigPart.HEAD) acc[part] = RigPart.BODY;
+    else if ([RigPart.LEG_1L, RigPart.LEG_1R, RigPart.LEG_2L, RigPart.LEG_2R, RigPart.LEG_3L, RigPart.LEG_3R, RigPart.LEG_4L, RigPart.LEG_4R].includes(part)) acc[part] = RigPart.BODY;
+    else acc[part] = null;
+    return acc;
+  }, {} as any),
+  [RigTemplate.BIRD]: RIG_PARTS.reduce((acc, part) => {
+    if (part === RigPart.BODY) acc[part] = RigPart.ROOT;
+    else if (part === RigPart.NECK) acc[part] = RigPart.BODY;
+    else if (part === RigPart.HEAD) acc[part] = RigPart.NECK;
+    else if ([RigPart.WING_L, RigPart.WING_R, RigPart.TAIL, RigPart.LEG_L, RigPart.LEG_R].includes(part)) acc[part] = RigPart.BODY;
+    else acc[part] = null;
+    return acc;
+  }, {} as any),
+  [RigTemplate.VEHICLE]: RIG_PARTS.reduce((acc, part) => {
+    if (part === RigPart.BODY) acc[part] = RigPart.ROOT;
+    else if ([RigPart.WHEEL_FL, RigPart.WHEEL_FR, RigPart.WHEEL_BL, RigPart.WHEEL_BR].includes(part)) acc[part] = RigPart.BODY;
     else acc[part] = null;
     return acc;
   }, {} as any),

@@ -39,8 +39,9 @@ const SceneContent: React.FC<{
   cameraTrigger: number,
   pendingCamera: CameraConfig | null,
   cameraStateRef: React.MutableRefObject<CameraConfig | null>,
-  gridVisible: boolean
-}> = ({ state, onGizmoChange, onGizmoStart, onGizmoEnd, cameraTrigger, pendingCamera, cameraStateRef, gridVisible }) => {
+  gridVisible: boolean,
+  skeletonVisible: boolean
+}> = ({ state, onGizmoChange, onGizmoStart, onGizmoEnd, cameraTrigger, pendingCamera, cameraStateRef, gridVisible, skeletonVisible }) => {
   const { scene, camera, gl } = useThree();
   const transformRef = useRef<any>(null);
   const controlsRef = useRef<any>(null);
@@ -217,6 +218,9 @@ const SceneContent: React.FC<{
         castShadow={state.config.voxelsCastShadows}
         receiveShadow={state.config.voxelsReceiveShadows}
         hiddenParts={state.hiddenParts}
+        activeParts={state.activeParts}
+        selectedPart={state.selectedPart}
+        showSkeleton={gridVisible && skeletonVisible}
         modelTransform={state.modelTransform}
       />
 
@@ -276,6 +280,7 @@ const App: React.FC = () => {
   const [redoStack, setRedoStack] = useState<AppState[]>([]);
   const [activePanel, setActivePanel] = useState<'anim' | 'rig' | 'layers' | 'scene' | null>('anim');
   const [gridVisible, setGridVisible] = useState(true);
+  const [skeletonVisible, setSkeletonVisible] = useState(true);
   const [cameraTrigger, setCameraTrigger] = useState(0);
   const [pendingCamera, setPendingCamera] = useState<CameraConfig | null>(null);
   const cameraStateRef = useRef<CameraConfig | null>(null);
@@ -444,6 +449,8 @@ const App: React.FC = () => {
         onTakeSnapshot={handleTakeSnapshot}
         gridVisible={gridVisible}
         onToggleGrid={() => setGridVisible(!gridVisible)}
+        skeletonVisible={skeletonVisible}
+        onToggleSkeleton={() => setSkeletonVisible(!skeletonVisible)}
         onShowGuide={() => setShowGuide(true)}
         onOpenExport={() => setShowExportModal(true)}
         onSaveProject={() => {
@@ -590,6 +597,7 @@ const App: React.FC = () => {
             <SceneContent 
               state={state}
               gridVisible={gridVisible}
+              skeletonVisible={skeletonVisible}
               onGizmoChange={handleGizmoChange}
               onGizmoStart={pushHistory}
               onGizmoEnd={() => {}}

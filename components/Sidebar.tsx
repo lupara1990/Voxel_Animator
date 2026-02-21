@@ -73,6 +73,22 @@ const Sidebar: React.FC<SidebarProps> = ({
         {activePanel === 'rig' && (
           <div className="space-y-8">
             <section>
+              <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-3">Rig Template</label>
+              <div className="grid grid-cols-4 gap-1 bg-white/5 p-1 rounded-xl border border-white/10">
+                {Object.values(RigTemplate).map(template => (
+                  <button
+                    key={template}
+                    onClick={() => onUpdateRigTemplate(template)}
+                    className={`py-2 rounded-lg text-[8px] font-bold transition-all ${state.rigTemplate === template ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-white/40 hover:text-white/60'}`}
+                  >
+                    {template.slice(0, 4)}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[9px] text-white/20 mt-2 italic px-1">Applying a template resets the current bone hierarchy.</p>
+            </section>
+
+            <section>
               <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-3">Model Import</label>
               <div className="relative group">
                 <input type="file" accept=".vox" onChange={onFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
@@ -142,7 +158,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             <section>
               <div className="flex justify-between items-center mb-3">
-                <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest">Rig Construction</label>
+                <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest">Bone Hierarchy</label>
                 <div className="flex gap-2">
                   <button 
                     onClick={onOpenRigEditor}
@@ -163,27 +179,44 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               </div>
 
-              <div className="space-y-1 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
-                {state.activeParts.map(part => (
-                  <div 
-                    key={part} 
-                    className={`flex items-center gap-2 p-1.5 rounded-lg border transition-all cursor-pointer ${state.selectedPart === part ? 'bg-indigo-600 border-indigo-500 shadow-lg shadow-indigo-500/20' : 'bg-white/5 border-white/5 hover:border-white/10'}`}
-                    onClick={() => onSelectPart(part)}
-                  >
-                    <div className="flex-1 truncate text-[11px] font-medium tracking-wide flex items-center gap-2">
-                       <i className={`fas ${state.partParents[part] ? 'fa-link' : 'fa-circle'} text-[8px] opacity-40`}></i>
-                       {part}
-                    </div>
-                    {part !== RigPart.ROOT && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); onRemoveBone(part); }}
-                        className="p-1.5 text-white/20 hover:text-red-400 transition-colors"
-                      >
-                        <i className="fas fa-trash-alt text-[9px]"></i>
-                      </button>
-                    )}
-                  </div>
-                ))}
+              <div className="space-y-1 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
+                {(() => {
+                  const rendered = new Set<RigPart>();
+                  const renderTree = (part: RigPart, depth: number = 0): React.ReactNode => {
+                    if (rendered.has(part)) return null;
+                    rendered.add(part);
+                    
+                    const children = state.activeParts.filter(p => state.partParents[p] === part);
+                    
+                    return (
+                      <React.Fragment key={part}>
+                        <div 
+                          className={`flex items-center gap-2 p-1.5 rounded-lg border transition-all cursor-pointer ${state.selectedPart === part ? 'bg-indigo-600 border-indigo-500 shadow-lg shadow-indigo-500/20' : 'bg-white/5 border-white/5 hover:border-white/10'}`}
+                          style={{ marginLeft: `${depth * 12}px` }}
+                          onClick={() => onSelectPart(part)}
+                        >
+                          <div className="flex-1 truncate text-[11px] font-medium tracking-wide flex items-center gap-2">
+                             <i className={`fas ${children.length > 0 ? 'fa-chevron-down' : 'fa-minus'} text-[8px] opacity-40`}></i>
+                             <i className="fas fa-bone text-[9px] opacity-60"></i>
+                             {part}
+                          </div>
+                          {part !== RigPart.ROOT && (
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); onRemoveBone(part); }}
+                              className="p-1.5 text-white/20 hover:text-red-400 transition-colors"
+                            >
+                              <i className="fas fa-trash-alt text-[9px]"></i>
+                            </button>
+                          )}
+                        </div>
+                        {children.map(child => renderTree(child, depth + 1))}
+                      </React.Fragment>
+                    );
+                  };
+
+                  const roots = state.activeParts.filter(p => !state.partParents[p] || !state.activeParts.includes(state.partParents[p]!));
+                  return roots.map(root => renderTree(root));
+                })()}
               </div>
             </section>
 
@@ -239,7 +272,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {activePanel === 'layers' && (
           <div className="space-y-6">
-             <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-1">Part Organization</label>
+             <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-1">Bone Organization</label>
              <div className="space-y-1">
                {state.activeParts.map(part => (
                  <div key={part} className={`flex items-center gap-2 p-2 rounded-xl border border-white/5 transition-all ${state.selectedPart === part ? 'bg-indigo-600/10 border-indigo-500/30' : 'bg-white/5'}`}>
@@ -247,7 +280,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     className="flex-1 text-[11px] font-medium tracking-wide cursor-pointer flex items-center gap-2"
                     onClick={() => onSelectPart(part)}
                    >
-                     <i className={`fas fa-cube text-[10px] ${state.selectedPart === part ? 'text-indigo-400' : 'text-white/20'}`}></i>
+                     <i className={`fas fa-bone text-[10px] ${state.selectedPart === part ? 'text-indigo-400' : 'text-white/20'}`}></i>
                      {part}
                    </div>
                    <div className="flex gap-1">
@@ -274,21 +307,6 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {activePanel === 'anim' && (
           <div className="space-y-8">
-            <section>
-              <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-3">Templates</label>
-              <div className="flex bg-white/5 p-1 rounded-xl border border-white/10">
-                {Object.values(RigTemplate).map(template => (
-                  <button
-                    key={template}
-                    onClick={() => onUpdateRigTemplate(template)}
-                    className={`flex-1 py-2 rounded-lg text-[9px] font-bold transition-all ${state.rigTemplate === template ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-white/40 hover:text-white/60'}`}
-                  >
-                    {template.slice(0, 4)}
-                  </button>
-                ))}
-              </div>
-            </section>
-
             <section>
               <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-3">Motion Clips</label>
               <div className="grid grid-cols-2 gap-2">

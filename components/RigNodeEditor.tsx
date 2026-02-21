@@ -80,6 +80,16 @@ const RigNodeEditor: React.FC<RigNodeEditorProps> = ({
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
+  // Sync nodes when active parts change
+  useEffect(() => {
+    setNodes(initialNodes);
+  }, [initialNodes, setNodes]);
+
+  // Sync edges when hierarchy changes
+  useEffect(() => {
+    setEdges(initialEdges);
+  }, [initialEdges, setEdges]);
+
   // Sync selection from state to nodes
   useEffect(() => {
     setNodes((nds) =>
