@@ -15,6 +15,7 @@ import Toolbar from './components/Toolbar';
 import GuideModal from './components/GuideModal';
 import ExportModal from './components/ExportModal';
 import RigNodeEditor from './components/RigNodeEditor';
+import ViewSelector from './components/ViewSelector';
 
 // Fix JSX intrinsic element errors by extending the global JSX namespace.
 // This ensures that Three.js elements used in R3F (like <mesh />, <group />, etc.) 
@@ -738,6 +739,13 @@ const App: React.FC = () => {
             />
           </Canvas>
 
+          <ViewSelector 
+            onSetView={(c) => {
+              setPendingCamera(c);
+              setCameraTrigger(prev => prev + 1);
+            }}
+          />
+
           <Timeline 
             currentTime={state.currentTime}
             keyframes={state.keyframes}
@@ -772,11 +780,32 @@ const App: React.FC = () => {
           onConfirm={async () => {
             setShowExportModal(false);
             setIsExporting(true);
+            
+            // Store current state to restore later
+            const prevGrid = gridVisible;
+            const prevSkeleton = skeletonVisible;
+            const prevSelectedPart = state.selectedPart;
+            const prevIsPlaying = state.isPlaying;
+            const prevTime = state.currentTime;
+
+            // Hide UI elements and prepare for recording
+            setGridVisible(false);
+            setSkeletonVisible(false);
+            setState(s => ({ 
+              ...s, 
+              selectedPart: null,
+              isPlaying: true,
+              currentTime: 0
+            }));
+
+            // Wait for state changes to propagate to the canvas
+            await new Promise(resolve => setTimeout(resolve, 200));
+
             try {
               const canvas = document.querySelector('canvas');
               if (!canvas) throw new Error("Canvas not found");
               
-              // Record for 5 seconds or loop duration
+              // Record for 5 seconds
               const videoUrl = await exportCanvasToVideo(canvas, 5);
               if (videoUrl) {
                 const link = document.createElement('a');
@@ -785,9 +814,19 @@ const App: React.FC = () => {
                 link.click();
               }
             } catch (err) {
+              console.error("Export error:", err);
               alert("Export failed. Please try again.");
             } finally {
               setIsExporting(false);
+              // Restore previous state
+              setGridVisible(prevGrid);
+              setSkeletonVisible(prevSkeleton);
+              setState(s => ({ 
+                ...s, 
+                selectedPart: prevSelectedPart,
+                isPlaying: prevIsPlaying,
+                currentTime: prevTime
+              }));
             }
           }}
         />
