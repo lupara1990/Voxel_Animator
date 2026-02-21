@@ -269,6 +269,7 @@ const App: React.FC = () => {
     restTransforms: { ...INITIAL_REST_TRANSFORMS },
     hiddenParts: [],
     lockedParts: [],
+    savedRigTemplates: [],
     modelTransform: {
       position: [0, 0, 0],
       rotation: [0, 0, 0],
@@ -292,6 +293,7 @@ const App: React.FC = () => {
     aspectRatio: '16:9'
   });
   const [isExporting, setIsExporting] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const pushHistory = useCallback(() => {
     setHistory(prev => [...prev.slice(-49), JSON.parse(JSON.stringify(state))]);
@@ -350,13 +352,36 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleUndo, handleRedo, handleTakeSnapshot]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement> | File, merge: boolean = false) => {
+    const file = e instanceof File ? e : e.target.files?.[0];
     if (!file) return;
     pushHistory();
     const buffer = await file.arrayBuffer();
-    const voxels = await parseVoxFile(buffer, state.rigTemplate);
-    setState(s => ({ ...s, voxels }));
+    const newVoxels = await parseVoxFile(buffer, state.rigTemplate);
+    
+    if (merge) {
+      setState(s => ({ ...s, voxels: [...s.voxels, ...newVoxels] }));
+    } else {
+      setState(s => ({ ...s, voxels: newVoxels }));
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.endsWith('.vox')) {
+      handleFileUpload(file);
+    }
   };
 
   const handleGizmoChange = (part: RigPart, position: [number, number, number], rotation: [number, number, number]) => {
@@ -419,6 +444,88 @@ const App: React.FC = () => {
     });
   };
 
+  const handleSetCurrentAsRest = () => {
+    if (!state.selectedPart) return;
+    pushHistory();
+    setState(s => {
+      const part = s.selectedPart!;
+      const currentK = s.keyframes.reduce((pk, ck) => (s.currentTime >= ck.time) ? ck : pk, s.keyframes[0]);
+      const animatedTransform = currentK.transforms[part];
+      
+      const nextRest = JSON.parse(JSON.stringify(s.restTransforms));
+      nextRest[part].position = [
+        nextRest[part].position[0] + animatedTransform.position[0],
+        nextRest[part].position[1] + animatedTransform.position[1],
+        nextRest[part].position[2] + animatedTransform.position[2]
+      ];
+      nextRest[part].rotation = [
+        nextRest[part].rotation[0] + animatedTransform.rotation[0],
+        nextRest[part].rotation[1] + animatedTransform.rotation[1],
+        nextRest[part].rotation[2] + animatedTransform.rotation[2]
+      ];
+
+      // Reset animated delta for this part in all keyframes to maintain visual pose
+      const nextKeyframes = s.keyframes.map(k => ({
+        ...k,
+        transforms: {
+          ...k.transforms,
+          [part]: { position: [0, 0, 0], rotation: [0, 0, 0] }
+        }
+      }));
+
+      return { ...s, restTransforms: nextRest, keyframes: nextKeyframes };
+    });
+  };
+
+  const handleResetRestPose = () => {
+    if (!state.selectedPart) return;
+    pushHistory();
+    setState(s => {
+      const nextRest = JSON.parse(JSON.stringify(s.restTransforms));
+      nextRest[s.selectedPart!] = { position: [0, 0, 0], rotation: [0, 0, 0] };
+      return { ...s, restTransforms: nextRest };
+    });
+  };
+
+  const handleSaveRigTemplate = (name: string) => {
+    setState(s => ({
+      ...s,
+      savedRigTemplates: [
+        ...s.savedRigTemplates,
+        {
+          id: Date.now().toString(),
+          name,
+          template: s.rigTemplate,
+          partParents: JSON.parse(JSON.stringify(s.partParents)),
+          activeParts: [...s.activeParts],
+          restTransforms: JSON.parse(JSON.stringify(s.restTransforms)),
+        }
+      ]
+    }));
+  };
+
+  const handleLoadRigTemplate = (id: string) => {
+    const template = state.savedRigTemplates.find(t => t.id === id);
+    if (template) {
+      pushHistory();
+      setState(s => ({
+        ...s,
+        rigTemplate: template.template,
+        partParents: JSON.parse(JSON.stringify(template.partParents)),
+        activeParts: [...template.activeParts],
+        restTransforms: JSON.parse(JSON.stringify(template.restTransforms)),
+        voxels: reprocessVoxels(s.voxels, template.template)
+      }));
+    }
+  };
+
+  const handleDeleteRigTemplate = (id: string) => {
+    setState(s => ({
+      ...s,
+      savedRigTemplates: s.savedRigTemplates.filter(t => t.id !== id)
+    }));
+  };
+
   const togglePartVisibility = (part: RigPart) => {
     setState(s => ({
       ...s,
@@ -438,7 +545,25 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black text-white flex flex-col overflow-hidden font-sans">
+    <div 
+      className="fixed inset-0 bg-black text-white flex flex-col overflow-hidden font-sans"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragging && (
+        <div className="fixed inset-0 z-[300] bg-indigo-600/20 backdrop-blur-sm border-4 border-dashed border-indigo-500 flex items-center justify-center pointer-events-none animate-in fade-in duration-200">
+          <div className="bg-neutral-900 p-8 rounded-3xl border border-white/10 shadow-2xl flex flex-col items-center gap-4">
+            <div className="w-16 h-16 bg-indigo-500 rounded-2xl flex items-center justify-center text-white text-2xl shadow-lg shadow-indigo-500/40">
+              <i className="fas fa-file-import"></i>
+            </div>
+            <div className="text-center">
+              <h2 className="text-xl font-black uppercase tracking-widest">Drop to Import</h2>
+              <p className="text-sm text-white/40">MagicaVoxel .VOX file</p>
+            </div>
+          </div>
+        </div>
+      )}
       <Toolbar 
         activePanel={activePanel}
         onTogglePanel={(p) => setActivePanel(activePanel === p ? null : p)}
@@ -504,7 +629,8 @@ const App: React.FC = () => {
           }}
           onUpdateModelTransform={(u) => setState(s => ({ ...s, modelTransform: { ...s.modelTransform, ...u } }))}
           onConfigInteractionStart={pushHistory}
-          onFileUpload={handleFileUpload}
+          onFileUpload={(e) => handleFileUpload(e, false)}
+          onFileMerge={(e) => handleFileUpload(e, true)}
           onSelectPart={(p) => setState(s => ({ ...s, selectedPart: p }))}
           onUpdateTransform={(part, type, i, val) => {
             const currentK = state.keyframes.reduce((pk, ck) => (state.currentTime >= ck.time) ? ck : pk, state.keyframes[0]);
@@ -542,6 +668,8 @@ const App: React.FC = () => {
           }}
           onUpdateAutoKeyframe={(a) => setState(s => ({ ...s, autoKeyframe: a }))}
           onUpdatePartParent={(part, parent) => setState(s => ({ ...s, partParents: { ...s.partParents, [part]: parent } }))}
+          onSetCurrentAsRest={handleSetCurrentAsRest}
+          onResetRestPose={handleResetRestPose}
           onAddBone={(p) => setState(s => ({ ...s, activeParts: [...s.activeParts, p] }))}
           onRemoveBone={(p) => setState(s => ({ ...s, activeParts: s.activeParts.filter(x => x !== p) }))}
           onApplyAnimationPreset={(p) => {
@@ -590,6 +718,9 @@ const App: React.FC = () => {
           onTogglePartVisibility={togglePartVisibility}
           onTogglePartLock={togglePartLock}
           onOpenRigEditor={() => setShowRigEditor(true)}
+          onSaveRigTemplate={handleSaveRigTemplate}
+          onLoadRigTemplate={handleLoadRigTemplate}
+          onDeleteRigTemplate={handleDeleteRigTemplate}
         />
 
         <main className="flex-1 relative bg-[#050505]">

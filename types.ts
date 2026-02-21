@@ -131,6 +131,18 @@ export interface AnimationPreset {
   keyframes: Pick<Keyframe, 'time' | 'interpolation' | 'transforms'>[];
 }
 
+export interface SavedRigTemplate {
+  id: string;
+  name: string;
+  template: RigTemplate;
+  partParents: Record<RigPart, RigPart | null>;
+  activeParts: RigPart[];
+  restTransforms: Record<RigPart, {
+    position: [number, number, number];
+    rotation: [number, number, number];
+  }>;
+}
+
 export type GizmoMode = 'translate' | 'rotate';
 
 export interface AppState {
@@ -154,6 +166,7 @@ export interface AppState {
   // New Layer Properties
   hiddenParts: RigPart[];
   lockedParts: RigPart[];
+  savedRigTemplates: SavedRigTemplate[];
   // Global Model Transform
   modelTransform: {
     position: [number, number, number];

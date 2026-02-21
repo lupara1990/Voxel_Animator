@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { AppState, RigPart, GizmoMode, InterpolationMode, Preset, RigTemplate, CameraConfig, AnimationPreset } from '../types';
 import { TEMPLATE_PARTS, HDRI_PRESETS, RIG_PARTS, ANIMATION_PRESETS } from '../constants';
 
@@ -14,6 +14,7 @@ interface SidebarProps {
   onUpdateModelTransform: (updates: any) => void;
   onConfigInteractionStart: () => void;
   onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onFileMerge: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onSelectPart: (part: RigPart | null) => void;
   onUpdateTransform: (part: RigPart, type: 'position' | 'rotation', index: number, value: number) => void;
   onUpdateRestTransform: (part: RigPart, type: 'position' | 'rotation', index: number, value: number) => void;
@@ -23,6 +24,8 @@ interface SidebarProps {
   onUpdateRigTemplate: (template: RigTemplate) => void;
   onUpdateAutoKeyframe: (auto: boolean) => void;
   onUpdatePartParent: (part: RigPart, parent: RigPart | null) => void;
+  onSetCurrentAsRest: () => void;
+  onResetRestPose: () => void;
   onAddBone: (part: RigPart) => void;
   onRemoveBone: (part: RigPart) => void;
   onApplyAnimationPreset: (preset: AnimationPreset) => void;
@@ -37,16 +40,34 @@ interface SidebarProps {
   onTogglePartVisibility: (part: RigPart) => void;
   onTogglePartLock: (part: RigPart) => void;
   onOpenRigEditor: () => void;
+  onSaveRigTemplate: (name: string) => void;
+  onLoadRigTemplate: (id: string) => void;
+  onDeleteRigTemplate: (id: string) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
   state, activePanel, canUndo, canRedo, onUndo, onRedo, onUpdateConfig, onUpdateModelTransform, onConfigInteractionStart,
-  onFileUpload, onSelectPart, onUpdateTransform, onUpdateRestTransform, onTransformInteractionStart,
+  onFileUpload, onFileMerge, onSelectPart, onUpdateTransform, onUpdateRestTransform, onTransformInteractionStart,
   onSetGizmoMode, onUpdateInterpolation, onUpdateRigTemplate, onUpdateAutoKeyframe, onUpdatePartParent,
+  onSetCurrentAsRest, onResetRestPose,
   onAddBone, onRemoveBone, onApplyAnimationPreset, onApplyPreset, onSavePreset,
   onSaveCamera, onUpdateCamera, onDeleteCamera, onSwitchCamera, onSaveProject, onLoadProject,
-  onTogglePartVisibility, onTogglePartLock, onOpenRigEditor
+  onTogglePartVisibility, onTogglePartLock, onOpenRigEditor,
+  onSaveRigTemplate, onLoadRigTemplate, onDeleteRigTemplate
 }) => {
+  const [showAddBoneDropdown, setShowAddBoneDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowAddBoneDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   if (!activePanel) return null;
 
   const currentKeyframe = state.keyframes.reduce((pk, ck) => (ck.time <= state.currentTime) ? ck : pk, state.keyframes[0]);
@@ -72,29 +93,76 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
         {activePanel === 'rig' && (
           <div className="space-y-8">
-            <section>
-              <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-3">Rig Template</label>
-              <div className="grid grid-cols-4 gap-1 bg-white/5 p-1 rounded-xl border border-white/10">
-                {Object.values(RigTemplate).map(template => (
-                  <button
-                    key={template}
-                    onClick={() => onUpdateRigTemplate(template)}
-                    className={`py-2 rounded-lg text-[8px] font-bold transition-all ${state.rigTemplate === template ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-white/40 hover:text-white/60'}`}
-                  >
-                    {template.slice(0, 4)}
-                  </button>
-                ))}
+            <section className="space-y-4">
+              <div className="flex justify-between items-center">
+                <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest">Rig Template</label>
+                <button 
+                  onClick={() => {
+                    const name = prompt("Template Name:", `Rig ${state.savedRigTemplates.length + 1}`);
+                    if (name) onSaveRigTemplate(name);
+                  }}
+                  className="text-[9px] font-bold text-indigo-400 hover:text-indigo-300 uppercase tracking-widest transition-colors"
+                >
+                  <i className="fas fa-save mr-1"></i> Save Current
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <select 
+                  value={state.rigTemplate}
+                  onChange={(e) => onUpdateRigTemplate(e.target.value as RigTemplate)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white/80 outline-none focus:border-indigo-500/50"
+                >
+                  {Object.values(RigTemplate).map(template => (
+                    <option key={template} value={template}>
+                      {template.charAt(0) + template.slice(1).toLowerCase()}
+                    </option>
+                  ))}
+                </select>
+
+                {state.savedRigTemplates.length > 0 && (
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-bold text-white/20 uppercase tracking-widest block px-1">Saved Templates</label>
+                    <div className="grid grid-cols-1 gap-1">
+                      {state.savedRigTemplates.map(t => (
+                        <div key={t.id} className="group flex items-center gap-2 p-2 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl transition-all">
+                          <button 
+                            onClick={() => onLoadRigTemplate(t.id)}
+                            className="flex-1 text-left text-[10px] font-medium truncate"
+                          >
+                            {t.name}
+                          </button>
+                          <button 
+                            onClick={() => onDeleteRigTemplate(t.id)}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-white/20 hover:text-red-400 transition-all"
+                          >
+                            <i className="fas fa-trash-alt text-[8px]"></i>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               <p className="text-[9px] text-white/20 mt-2 italic px-1">Applying a template resets the current bone hierarchy.</p>
             </section>
 
             <section>
               <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block mb-3">Model Import</label>
-              <div className="relative group">
-                <input type="file" accept=".vox" onChange={onFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                <div className="flex items-center gap-3 p-4 bg-white/5 border border-white/10 rounded-xl group-hover:bg-white/10 group-hover:border-indigo-500/50 transition-all duration-300">
-                  <div className="w-10 h-10 bg-indigo-500/20 rounded-lg flex items-center justify-center text-indigo-400"><i className="fas fa-file-import"></i></div>
-                  <div><span className="block text-sm font-medium">Import .VOX</span><span className="block text-[10px] text-white/40">Automatic Rigging</span></div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="relative group">
+                  <input type="file" accept=".vox" onChange={onFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                  <div className="flex flex-col items-center gap-2 p-3 bg-white/5 border border-white/10 rounded-xl group-hover:bg-white/10 group-hover:border-indigo-500/50 transition-all duration-300">
+                    <div className="w-8 h-8 bg-indigo-500/20 rounded-lg flex items-center justify-center text-indigo-400"><i className="fas fa-file-import"></i></div>
+                    <div className="text-center"><span className="block text-[10px] font-bold uppercase tracking-widest">Replace</span></div>
+                  </div>
+                </div>
+                <div className="relative group">
+                  <input type="file" accept=".vox" onChange={onFileMerge} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                  <div className="flex flex-col items-center gap-2 p-3 bg-white/5 border border-white/10 rounded-xl group-hover:bg-white/10 group-hover:border-emerald-500/50 transition-all duration-300">
+                    <div className="w-8 h-8 bg-emerald-500/20 rounded-lg flex items-center justify-center text-emerald-400"><i className="fas fa-plus"></i></div>
+                    <div className="text-center"><span className="block text-[10px] font-bold uppercase tracking-widest">Merge</span></div>
+                  </div>
                 </div>
               </div>
             </section>
@@ -159,23 +227,45 @@ const Sidebar: React.FC<SidebarProps> = ({
             <section>
               <div className="flex justify-between items-center mb-3">
                 <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest">Bone Hierarchy</label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 relative" ref={dropdownRef}>
+                  <button 
+                    onClick={() => setShowAddBoneDropdown(!showAddBoneDropdown)}
+                    className="px-2 py-1 bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/50 rounded text-[9px] font-bold uppercase tracking-widest transition-all flex items-center gap-1 text-indigo-400"
+                  >
+                    <i className="fas fa-plus mr-1"></i> Add Bone
+                  </button>
+
+                  {showAddBoneDropdown && (
+                    <div className="absolute top-full right-0 mt-1 w-48 bg-neutral-900 border border-white/10 rounded-xl shadow-2xl z-[100] py-2 max-h-64 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div className="px-3 py-1 border-b border-white/5 mb-1">
+                        <span className="text-[8px] font-bold text-white/20 uppercase tracking-widest">Available Parts</span>
+                      </div>
+                      {unusedParts.length === 0 ? (
+                        <div className="px-4 py-2 text-[10px] text-white/40 italic">No parts available</div>
+                      ) : (
+                        unusedParts.map(p => (
+                          <button
+                            key={p}
+                            onClick={() => {
+                              onAddBone(p);
+                              setShowAddBoneDropdown(false);
+                            }}
+                            className="w-full text-left px-4 py-1.5 text-[10px] hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-2"
+                          >
+                            <i className="fas fa-bone opacity-40"></i>
+                            {p}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+
                   <button 
                     onClick={onOpenRigEditor}
-                    className="px-2 py-1 bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/50 rounded text-[9px] font-bold uppercase tracking-widest transition-all"
+                    className="px-2 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded text-[9px] font-bold uppercase tracking-widest transition-all text-white/60"
                   >
                     <i className="fas fa-project-diagram mr-1"></i> Visual Editor
                   </button>
-                  <select 
-                    onChange={(e) => {
-                      if (e.target.value) onAddBone(e.target.value as RigPart);
-                      e.target.value = '';
-                    }}
-                    className="bg-indigo-600/20 text-indigo-400 text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded border border-indigo-500/50 outline-none"
-                  >
-                    <option value="">+ Add Bone</option>
-                    {unusedParts.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
                 </div>
               </div>
 
@@ -242,7 +332,23 @@ const Sidebar: React.FC<SidebarProps> = ({
                   </div>
 
                   <div className="space-y-4">
-                    <label className="text-[9px] font-bold text-white/30 uppercase tracking-widest block">Rest Pose (Pivot Point)</label>
+                    <div className="flex justify-between items-center">
+                      <label className="text-[9px] font-bold text-white/30 uppercase tracking-widest block">Rest Pose (Pivot Point)</label>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={onResetRestPose}
+                          className="text-[8px] font-bold text-white/40 hover:text-white uppercase tracking-widest transition-colors"
+                        >
+                          Reset
+                        </button>
+                        <button 
+                          onClick={onSetCurrentAsRest}
+                          className="text-[8px] font-bold text-indigo-400 hover:text-indigo-300 uppercase tracking-widest transition-colors"
+                        >
+                          Capture Current
+                        </button>
+                      </div>
+                    </div>
                     {['position', 'rotation'].map((type) => (
                       <div key={type} className="space-y-3">
                         <span className="text-[9px] text-white/20 uppercase tracking-tighter block border-b border-white/5 pb-1">{type}</span>
