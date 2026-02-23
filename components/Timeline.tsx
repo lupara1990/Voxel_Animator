@@ -1,21 +1,27 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Keyframe } from '../types';
+import { Keyframe, PlaybackMode } from '../types';
 
 interface TimelineProps {
   currentTime: number;
   keyframes: Keyframe[];
   isPlaying: boolean;
+  playbackMode: PlaybackMode;
+  playbackDirection: 1 | -1;
   onTimeChange: (time: number) => void;
   onTogglePlay: () => void;
   onAddKeyframe: () => void;
   onMoveKeyframe: (index: number, newTime: number) => void;
+  onUpdatePlaybackMode: (mode: PlaybackMode) => void;
+  onUpdatePlaybackDirection: (dir: 1 | -1) => void;
 }
 
 const FRAME_STEP = 0.01;
 
 const Timeline: React.FC<TimelineProps> = ({ 
-  currentTime, keyframes, isPlaying, onTimeChange, onTogglePlay, onAddKeyframe, onMoveKeyframe 
+  currentTime, keyframes, isPlaying, playbackMode, playbackDirection,
+  onTimeChange, onTogglePlay, onAddKeyframe, onMoveKeyframe,
+  onUpdatePlaybackMode, onUpdatePlaybackDirection
 }) => {
   const lastTimeRef = useRef<number>(performance.now());
   const trackRef = useRef<HTMLDivElement>(null);
@@ -29,8 +35,29 @@ const Timeline: React.FC<TimelineProps> = ({
         const delta = (now - lastTimeRef.current) / 1000;
         lastTimeRef.current = now;
         
-        let newTime = currentTime + delta * 0.2;
-        if (newTime > 1) newTime = 0;
+        let newTime = currentTime + (delta * 0.2 * playbackDirection);
+        
+        if (playbackMode === PlaybackMode.LOOP) {
+          if (newTime > 1) newTime = 0;
+          if (newTime < 0) newTime = 1;
+        } else if (playbackMode === PlaybackMode.PING_PONG) {
+          if (newTime > 1) {
+            newTime = 1;
+            onUpdatePlaybackDirection(-1);
+          } else if (newTime < 0) {
+            newTime = 0;
+            onUpdatePlaybackDirection(1);
+          }
+        } else { // ONCE
+          if (newTime > 1) {
+            newTime = 1;
+            onTogglePlay();
+          } else if (newTime < 0) {
+            newTime = 0;
+            onTogglePlay();
+          }
+        }
+        
         onTimeChange(newTime);
       } else {
         lastTimeRef.current = performance.now();
@@ -39,7 +66,7 @@ const Timeline: React.FC<TimelineProps> = ({
     };
     frame = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frame);
-  }, [isPlaying, currentTime, onTimeChange]);
+  }, [isPlaying, currentTime, playbackMode, playbackDirection, onTimeChange, onTogglePlay, onUpdatePlaybackDirection]);
 
   const handleMouseMove = (e: MouseEvent) => {
     if (draggingIdx === null || !trackRef.current) return;
@@ -99,6 +126,26 @@ const Timeline: React.FC<TimelineProps> = ({
           >
             <i className="fas fa-step-forward text-[10px]"></i>
           </button>
+
+          <div className="h-8 w-px bg-white/10 mx-2"></div>
+
+          <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5">
+            {[
+              { mode: PlaybackMode.ONCE, icon: 'fa-arrow-right', label: 'Once' },
+              { mode: PlaybackMode.LOOP, icon: 'fa-redo', label: 'Loop' },
+              { mode: PlaybackMode.PING_PONG, icon: 'fa-exchange-alt', label: 'Ping Pong' },
+            ].map((m) => (
+              <button
+                key={m.mode}
+                onClick={() => onUpdatePlaybackMode(m.mode)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all ${playbackMode === m.mode ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-white/40 hover:text-white/60'}`}
+                title={m.label}
+              >
+                <i className={`fas ${m.icon} text-[10px]`}></i>
+                <span className="hidden xl:inline">{m.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex-1 relative h-6 group" ref={trackRef}>

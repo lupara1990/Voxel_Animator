@@ -67,6 +67,12 @@ export enum InterpolationMode {
   BEZIER = 'BEZIER',
 }
 
+export enum PlaybackMode {
+  ONCE = 'ONCE',
+  LOOP = 'LOOP',
+  PING_PONG = 'PING_PONG',
+}
+
 export interface SceneConfig {
   exposure: number;
   bloom: number;
@@ -150,6 +156,8 @@ export interface AppState {
   keyframes: Keyframe[];
   currentTime: number;
   isPlaying: boolean;
+  playbackMode: PlaybackMode;
+  playbackDirection: 1 | -1;
   selectedPart: RigPart | null;
   config: SceneConfig;
   gizmoMode: GizmoMode;

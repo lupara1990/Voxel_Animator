@@ -4,7 +4,7 @@ import { Canvas, useThree, useFrame, ThreeElements } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, ContactShadows, Environment, TransformControls } from '@react-three/drei';
 import { EffectComposer, Bloom, ToneMapping, Vignette, N8AO, HueSaturation, BrightnessContrast } from '@react-three/postprocessing';
 import * as THREE from 'three';
-import { AppState, RigPart, VoxelData, Keyframe, GizmoMode, InterpolationMode, Preset, CameraConfig, RigTemplate, SavedCamera, SceneConfig, AnimationPreset } from './types';
+import { AppState, RigPart, VoxelData, Keyframe, GizmoMode, InterpolationMode, PlaybackMode, Preset, CameraConfig, RigTemplate, SavedCamera, SceneConfig, AnimationPreset } from './types';
 import { DEFAULT_CONFIG, INITIAL_TRANSFORMS, DEFAULT_PRESETS, DEFAULT_HIERARCHIES, RIG_PARTS, TEMPLATE_PARTS, INITIAL_REST_TRANSFORMS, ANIMATION_PRESETS } from './constants';
 import { parseVoxFile, reprocessVoxels } from './services/voxParser';
 import { exportCanvasToVideo } from './services/geminiService';
@@ -34,6 +34,7 @@ const easeInOutCubic = (t: number): number => {
 
 const SceneContent: React.FC<{ 
   state: AppState, 
+  currentTimeRef: React.MutableRefObject<number>,
   onGizmoChange: (part: RigPart, position: [number, number, number], rotation: [number, number, number]) => void,
   onGizmoStart: () => void,
   onGizmoEnd: () => void,
@@ -41,27 +42,30 @@ const SceneContent: React.FC<{
   pendingCamera: CameraConfig | null,
   cameraStateRef: React.MutableRefObject<CameraConfig | null>,
   gridVisible: boolean,
-  skeletonVisible: boolean
-}> = ({ state, onGizmoChange, onGizmoStart, onGizmoEnd, cameraTrigger, pendingCamera, cameraStateRef, gridVisible, skeletonVisible }) => {
+  skeletonVisible: boolean,
+  performanceMode: boolean
+}> = ({ state, currentTimeRef, onGizmoChange, onGizmoStart, onGizmoEnd, cameraTrigger, pendingCamera, cameraStateRef, gridVisible, skeletonVisible, performanceMode }) => {
   const { scene, camera, gl } = useThree();
   const transformRef = useRef<any>(null);
   const controlsRef = useRef<any>(null);
   const selectedObject = useRef<THREE.Object3D | null>(null);
+  const spotLightRef = useRef<THREE.SpotLight>(null);
 
-  const interpolatedConfig = useMemo(() => {
-    if (state.keyframes.length === 0) return state.config;
+  useFrame(() => {
+    if (state.keyframes.length === 0) return;
     
+    const currentTime = currentTimeRef.current;
     let prev = state.keyframes[0];
     let next = state.keyframes[0];
     for (let i = 0; i < state.keyframes.length; i++) {
-      if (state.keyframes[i].time <= state.currentTime) prev = state.keyframes[i];
-      if (state.keyframes[i].time >= state.currentTime) {
+      if (state.keyframes[i].time <= currentTime) prev = state.keyframes[i];
+      if (state.keyframes[i].time >= currentTime) {
         next = state.keyframes[i];
         break;
       }
     }
 
-    let t = next.time === prev.time ? 0 : (state.currentTime - prev.time) / (next.time - prev.time);
+    let t = next.time === prev.time ? 0 : (currentTime - prev.time) / (next.time - prev.time);
     if (prev.interpolation === InterpolationMode.STEP) t = 0;
     else if (prev.interpolation === InterpolationMode.BEZIER) t = easeInOutCubic(t);
 
@@ -69,32 +73,24 @@ const SceneContent: React.FC<{
     const nEnv = next.environment;
 
     const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-    const lerpColor = (a: string, b: string, t: number) => {
-      const c1 = new THREE.Color(a);
-      const c2 = new THREE.Color(b);
-      return `#${c1.lerp(c2, t).getHexString()}`;
-    };
-
-    return {
-      ...state.config,
-      exposure: lerp(pEnv.exposure, nEnv.exposure, t),
-      bloom: lerp(pEnv.bloom, nEnv.bloom, t),
-      aoIntensity: lerp(pEnv.aoIntensity, nEnv.aoIntensity, t),
-      lightIntensity: lerp(pEnv.lightIntensity, nEnv.lightIntensity, t),
-      lightColor: lerpColor(pEnv.lightColor, nEnv.lightColor, t),
-      lightPosition: [
+    
+    // Update light imperatively
+    if (spotLightRef.current) {
+      spotLightRef.current.intensity = lerp(pEnv.lightIntensity, nEnv.lightIntensity, t);
+      spotLightRef.current.position.set(
         lerp(pEnv.lightPosition[0], nEnv.lightPosition[0], t),
         lerp(pEnv.lightPosition[1], nEnv.lightPosition[1], t),
-        lerp(pEnv.lightPosition[2], nEnv.lightPosition[2], t),
-      ] as [number, number, number],
-      saturation: lerp(pEnv.saturation, nEnv.saturation, t),
-      contrast: lerp(pEnv.contrast, nEnv.contrast, t),
-      hue: lerp(pEnv.hue, nEnv.hue, t),
-      brightness: lerp(pEnv.brightness, nEnv.brightness, t),
-      contactShadowOpacity: lerp(pEnv.contactShadowOpacity, nEnv.contactShadowOpacity, t),
-      shadowSoftness: lerp(pEnv.shadowSoftness, nEnv.shadowSoftness, t),
-    };
-  }, [state.keyframes, state.currentTime, state.config]);
+        lerp(pEnv.lightPosition[2], nEnv.lightPosition[2], t)
+      );
+      const c1 = new THREE.Color(pEnv.lightColor);
+      const c2 = new THREE.Color(nEnv.lightColor);
+      spotLightRef.current.color.copy(c1.lerp(c2, t));
+    }
+
+    // For post-processing and other things that need React state, 
+    // we still update a local state, but maybe less frequently or only if changed significantly.
+    // However, for now, let's just keep the imperative light update.
+  });
 
   useEffect(() => {
     gl.shadowMap.enabled = true;
@@ -183,19 +179,20 @@ const SceneContent: React.FC<{
         onChange={handleControlsChange}
       />
       {state.config.backgroundType === 'color' && (
-        <color attach="background" args={[interpolatedConfig.backgroundColor]} />
+        <color attach="background" args={[state.config.backgroundColor]} />
       )}
       <ambientLight intensity={0.2} />
       <spotLight 
-        position={interpolatedConfig.lightPosition} 
+        ref={spotLightRef}
+        position={state.config.lightPosition} 
         angle={0.15} 
         penumbra={1} 
-        intensity={interpolatedConfig.lightIntensity} 
-        color={interpolatedConfig.lightColor}
-        castShadow={state.config.shadowsEnabled}
-        shadow-mapSize-width={state.config.shadowResolution}
-        shadow-mapSize-height={state.config.shadowResolution}
-        shadow-radius={interpolatedConfig.shadowSoftness}
+        intensity={state.config.lightIntensity} 
+        color={state.config.lightColor}
+        castShadow={state.config.shadowsEnabled && !performanceMode}
+        shadow-mapSize-width={performanceMode ? 512 : state.config.shadowResolution}
+        shadow-mapSize-height={performanceMode ? 512 : state.config.shadowResolution}
+        shadow-radius={state.config.shadowSoftness}
       />
       <directionalLight 
         position={[-10, 20, 10]} 
@@ -214,6 +211,7 @@ const SceneContent: React.FC<{
         voxels={state.voxels}
         keyframes={state.keyframes}
         currentTime={state.currentTime}
+        currentTimeRef={currentTimeRef}
         partParents={state.partParents}
         restTransforms={state.restTransforms}
         castShadow={state.config.voxelsCastShadows}
@@ -222,30 +220,46 @@ const SceneContent: React.FC<{
         activeParts={state.activeParts}
         selectedPart={state.selectedPart}
         showSkeleton={gridVisible && skeletonVisible}
+        performanceMode={performanceMode}
         modelTransform={state.modelTransform}
       />
 
       {gridVisible && <gridHelper args={[100, 100, 0x444444, 0x222222]} position={[0, -0.01, 0]} />}
       
-      <ContactShadows 
-        position={[0, 0, 0]} 
-        opacity={interpolatedConfig.contactShadowOpacity} 
-        scale={100} 
-        blur={2} 
-        far={10} 
-      />
+      {!performanceMode && (
+        <ContactShadows 
+          position={[0, 0, 0]} 
+          opacity={state.config.contactShadowOpacity} 
+          scale={100} 
+          blur={2} 
+          far={10} 
+        />
+      )}
 
-      <EffectComposer>
-        <N8AO intensity={interpolatedConfig.aoIntensity} aoRadius={5} distanceFalloff={1} />
-        <Bloom luminanceThreshold={1} luminanceSmoothing={0.9} intensity={interpolatedConfig.bloom} />
-        <HueSaturation hue={interpolatedConfig.hue} saturation={interpolatedConfig.saturation} />
-        <BrightnessContrast brightness={interpolatedConfig.brightness} contrast={interpolatedConfig.contrast} />
-        <ToneMapping exposure={interpolatedConfig.exposure} />
-        <Vignette eskil={false} offset={0.1} darkness={1.1} />
-      </EffectComposer>
+      {performanceMode ? (
+        <EffectComposer>
+          <HueSaturation hue={state.config.hue} saturation={state.config.saturation} />
+          <BrightnessContrast brightness={state.config.brightness} contrast={state.config.contrast} />
+          <ToneMapping exposure={state.config.exposure} />
+        </EffectComposer>
+      ) : (
+        <EffectComposer>
+          <N8AO intensity={state.config.aoIntensity} aoRadius={5} distanceFalloff={1} />
+          <Bloom luminanceThreshold={1} luminanceSmoothing={0.9} intensity={state.config.bloom} />
+          <HueSaturation hue={state.config.hue} saturation={state.config.saturation} />
+          <BrightnessContrast brightness={state.config.brightness} contrast={state.config.contrast} />
+          <ToneMapping exposure={state.config.exposure} />
+          <Vignette eskil={false} offset={0.1} darkness={1.1} />
+        </EffectComposer>
+      )}
     </>
   );
 };
+
+const MemoizedSceneContent = React.memo(SceneContent);
+const MemoizedSidebar = React.memo(Sidebar);
+const MemoizedToolbar = React.memo(Toolbar);
+const MemoizedTimeline = React.memo(Timeline);
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>({
@@ -258,6 +272,8 @@ const App: React.FC = () => {
     }],
     currentTime: 0,
     isPlaying: false,
+    playbackMode: PlaybackMode.LOOP,
+    playbackDirection: 1,
     selectedPart: null,
     config: { ...DEFAULT_CONFIG },
     gizmoMode: 'translate',
@@ -278,11 +294,19 @@ const App: React.FC = () => {
     }
   });
 
+  const currentTimeRef = useRef(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackMode, setPlaybackMode] = useState<PlaybackMode>(PlaybackMode.LOOP);
+  const [playbackDirection, setPlaybackDirection] = useState<1 | -1>(1);
+
   const [history, setHistory] = useState<AppState[]>([]);
   const [redoStack, setRedoStack] = useState<AppState[]>([]);
   const [activePanel, setActivePanel] = useState<'anim' | 'rig' | 'layers' | 'scene' | null>('anim');
   const [gridVisible, setGridVisible] = useState(true);
   const [skeletonVisible, setSkeletonVisible] = useState(true);
+  const [timelineVisible, setTimelineVisible] = useState(true);
+  const [performanceMode, setPerformanceMode] = useState(false);
   const [cameraTrigger, setCameraTrigger] = useState(0);
   const [pendingCamera, setPendingCamera] = useState<CameraConfig | null>(null);
   const cameraStateRef = useRef<CameraConfig | null>(null);
@@ -345,6 +369,8 @@ const App: React.FC = () => {
         setGridVisible(v => !v);
       } else if (e.key === 's' || e.key === 'S') {
         handleTakeSnapshot();
+      } else if (e.key === 't' || e.key === 'T') {
+        setTimelineVisible(v => !v);
       } else if (e.key === '?') {
         setShowGuide(v => !v);
       }
@@ -394,12 +420,12 @@ const App: React.FC = () => {
   const updateKeyframeAtCurrentTime = (part: RigPart, position: [number, number, number], rotation: [number, number, number]) => {
     setState(s => {
       const keyframes = [...s.keyframes];
-      let idx = keyframes.findIndex(k => Math.abs(k.time - s.currentTime) < 0.001);
+      let idx = keyframes.findIndex(k => Math.abs(k.time - currentTimeRef.current) < 0.001);
       
       if (idx === -1) {
-        const prevK = keyframes.reduce((pk, ck) => (ck.time <= s.currentTime) ? ck : pk, keyframes[0]);
+        const prevK = keyframes.reduce((pk, ck) => (ck.time <= currentTimeRef.current) ? ck : pk, keyframes[0]);
         const newK: Keyframe = {
-          time: s.currentTime,
+          time: currentTimeRef.current,
           interpolation: prevK.interpolation,
           transforms: JSON.parse(JSON.stringify(prevK.transforms)),
           environment: JSON.parse(JSON.stringify(s.config))
@@ -419,12 +445,12 @@ const App: React.FC = () => {
     pushHistory();
     setState(s => {
       const keyframes = [...s.keyframes];
-      const idx = keyframes.findIndex(k => Math.abs(k.time - s.currentTime) < 0.001);
+      const idx = keyframes.findIndex(k => Math.abs(k.time - currentTimeRef.current) < 0.001);
       if (idx !== -1) return s;
 
-      const prevK = keyframes.reduce((pk, ck) => (ck.time <= s.currentTime) ? ck : pk, keyframes[0]);
+      const prevK = keyframes.reduce((pk, ck) => (ck.time <= currentTimeRef.current) ? ck : pk, keyframes[0]);
       keyframes.push({
-        time: s.currentTime,
+        time: currentTimeRef.current,
         interpolation: prevK.interpolation,
         transforms: JSON.parse(JSON.stringify(prevK.transforms)),
         environment: JSON.parse(JSON.stringify(s.config))
@@ -565,7 +591,7 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-      <Toolbar 
+      <MemoizedToolbar 
         activePanel={activePanel}
         onTogglePanel={(p) => setActivePanel(activePanel === p ? null : p)}
         canUndo={history.length > 0}
@@ -577,6 +603,10 @@ const App: React.FC = () => {
         onToggleGrid={() => setGridVisible(!gridVisible)}
         skeletonVisible={skeletonVisible}
         onToggleSkeleton={() => setSkeletonVisible(!skeletonVisible)}
+        timelineVisible={timelineVisible}
+        onToggleTimeline={() => setTimelineVisible(!timelineVisible)}
+        performanceMode={performanceMode}
+        onTogglePerformance={() => setPerformanceMode(!performanceMode)}
         onShowGuide={() => setShowGuide(true)}
         onOpenExport={() => setShowExportModal(true)}
         onSaveProject={() => {
@@ -598,7 +628,7 @@ const App: React.FC = () => {
       />
 
       <div className="flex-1 flex overflow-hidden relative">
-        <Sidebar 
+        <MemoizedSidebar 
           state={state}
           activePanel={activePanel}
           canUndo={history.length > 0}
@@ -610,11 +640,11 @@ const App: React.FC = () => {
               const nextConfig = { ...s.config, ...u };
               const keyframes = [...s.keyframes];
               if (s.autoKeyframe) {
-                let idx = keyframes.findIndex(k => Math.abs(k.time - s.currentTime) < 0.001);
+                let idx = keyframes.findIndex(k => Math.abs(k.time - currentTimeRef.current) < 0.001);
                 if (idx === -1) {
-                  const prevK = keyframes.reduce((pk, ck) => (ck.time <= s.currentTime) ? ck : pk, keyframes[0]);
+                  const prevK = keyframes.reduce((pk, ck) => (ck.time <= currentTimeRef.current) ? ck : pk, keyframes[0]);
                   const newK: Keyframe = {
-                    time: s.currentTime,
+                    time: currentTimeRef.current,
                     interpolation: prevK.interpolation,
                     transforms: JSON.parse(JSON.stringify(prevK.transforms)),
                     environment: nextConfig
@@ -634,7 +664,7 @@ const App: React.FC = () => {
           onFileMerge={(e) => handleFileUpload(e, true)}
           onSelectPart={(p) => setState(s => ({ ...s, selectedPart: p }))}
           onUpdateTransform={(part, type, i, val) => {
-            const currentK = state.keyframes.reduce((pk, ck) => (state.currentTime >= ck.time) ? ck : pk, state.keyframes[0]);
+            const currentK = state.keyframes.reduce((pk, ck) => (currentTimeRef.current >= ck.time) ? ck : pk, state.keyframes[0]);
             const nextVal = [...currentK.transforms[part][type]] as [number, number, number];
             nextVal[i] = val;
             updateKeyframeAtCurrentTime(part, 
@@ -653,7 +683,7 @@ const App: React.FC = () => {
           onSetGizmoMode={(m) => setState(s => ({ ...s, gizmoMode: m }))}
           onUpdateInterpolation={(mode) => setState(s => {
             const kfs = [...s.keyframes];
-            const idx = kfs.findIndex(k => Math.abs(k.time - s.currentTime) < 0.001);
+            const idx = kfs.findIndex(k => Math.abs(k.time - currentTimeRef.current) < 0.001);
             if (idx !== -1) kfs[idx].interpolation = mode;
             return { ...s, keyframes: kfs };
           })}
@@ -725,11 +755,18 @@ const App: React.FC = () => {
         />
 
         <main className="flex-1 relative bg-[#050505]">
-          <Canvas shadows className="w-full h-full">
-            <SceneContent 
+          <Canvas 
+            shadows={!performanceMode} 
+            dpr={performanceMode ? 1 : [1, 2]}
+            className="w-full h-full"
+            gl={{ antialias: !performanceMode, powerPreference: "high-performance" }}
+          >
+            <MemoizedSceneContent 
               state={state}
+              currentTimeRef={currentTimeRef}
               gridVisible={gridVisible}
               skeletonVisible={skeletonVisible}
+              performanceMode={performanceMode}
               onGizmoChange={handleGizmoChange}
               onGizmoStart={pushHistory}
               onGizmoEnd={() => {}}
@@ -746,15 +783,24 @@ const App: React.FC = () => {
             }}
           />
 
-          <Timeline 
-            currentTime={state.currentTime}
-            keyframes={state.keyframes}
-            isPlaying={state.isPlaying}
-            onTimeChange={(t) => setState(s => ({ ...s, currentTime: t }))}
-            onTogglePlay={() => setState(s => ({ ...s, isPlaying: !s.isPlaying }))}
-            onAddKeyframe={handleAddKeyframe}
-            onMoveKeyframe={handleMoveKeyframe}
-          />
+          {timelineVisible && (
+            <MemoizedTimeline 
+              currentTime={currentTime}
+              keyframes={state.keyframes}
+              isPlaying={isPlaying}
+              playbackMode={playbackMode}
+              playbackDirection={playbackDirection}
+              onTimeChange={(t) => {
+                currentTimeRef.current = t;
+                setCurrentTime(t);
+              }}
+              onTogglePlay={() => setIsPlaying(!isPlaying)}
+              onAddKeyframe={handleAddKeyframe}
+              onMoveKeyframe={handleMoveKeyframe}
+              onUpdatePlaybackMode={setPlaybackMode}
+              onUpdatePlaybackDirection={setPlaybackDirection}
+            />
+          )}
         </main>
       </div>
 

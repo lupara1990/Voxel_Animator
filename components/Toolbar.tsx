@@ -13,6 +13,10 @@ interface ToolbarProps {
   onToggleGrid: () => void;
   skeletonVisible: boolean;
   onToggleSkeleton: () => void;
+  timelineVisible: boolean;
+  onToggleTimeline: () => void;
+  performanceMode: boolean;
+  onTogglePerformance: () => void;
   onShowGuide: () => void;
   onOpenExport: () => void;
   onSaveProject: () => void;
@@ -32,6 +36,10 @@ const Toolbar: React.FC<ToolbarProps> = ({
   onToggleGrid,
   skeletonVisible,
   onToggleSkeleton,
+  timelineVisible,
+  onToggleTimeline,
+  performanceMode,
+  onTogglePerformance,
   onShowGuide,
   onOpenExport,
   onSaveProject,
@@ -166,6 +174,18 @@ const Toolbar: React.FC<ToolbarProps> = ({
             label="Skeleton" 
             onClick={onToggleSkeleton} 
             active={skeletonVisible}
+          />
+          <ToolButton 
+            icon="fa-clock" 
+            label="Timeline" 
+            onClick={onToggleTimeline} 
+            active={timelineVisible}
+          />
+          <ToolButton 
+            icon="fa-bolt" 
+            label="Performance" 
+            onClick={onTogglePerformance} 
+            active={performanceMode}
           />
           <ToolButton 
             icon="fa-camera" 
