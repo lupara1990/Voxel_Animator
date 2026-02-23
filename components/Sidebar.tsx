@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { AppState, RigPart, GizmoMode, InterpolationMode, Preset, RigTemplate, CameraConfig, AnimationPreset } from '../types';
+import { AppState, RigPart, GizmoMode, InterpolationMode, Preset, RigTemplate, CameraConfig, AnimationPreset, LightType, LightConfig } from '../types';
 import { TEMPLATE_PARTS, HDRI_PRESETS, RIG_PARTS, ANIMATION_PRESETS } from '../constants';
 
 interface SidebarProps {
@@ -742,6 +742,191 @@ const Sidebar: React.FC<SidebarProps> = ({
                     className="w-full h-1 bg-white/10 rounded-full appearance-none accent-indigo-500"
                   />
                 </div>
+              </div>
+            </section>
+
+            <section>
+              <div className="flex justify-between items-center mb-3">
+                <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block">Dynamic Lights</label>
+                <div className="flex gap-1">
+                  {Object.values(LightType).map(type => (
+                    <button 
+                      key={type}
+                      onClick={() => {
+                        const newLight: LightConfig = {
+                          id: Math.random().toString(36).substr(2, 9),
+                          type: type as LightType,
+                          position: [0, 10, 0],
+                          rotation: [0, 0, 0],
+                          color: '#ffffff',
+                          intensity: 1,
+                          castShadow: true,
+                          ...(type === LightType.SPOT ? { angle: 0.3, penumbra: 0.5 } : {}),
+                          ...(type === LightType.AREA ? { width: 10, height: 10 } : {}),
+                        };
+                        onUpdateConfig({ lights: [...state.config.lights, newLight] });
+                      }}
+                      className="px-1.5 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded text-[8px] font-bold uppercase transition-all"
+                      title={`Add ${type}`}
+                    >
+                      {type.slice(0, 3)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                {state.config.lights.map((light, index) => (
+                  <div key={light.id} className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">{light.type} #{index + 1}</span>
+                      <button 
+                        onClick={() => {
+                          const newLights = state.config.lights.filter(l => l.id !== light.id);
+                          onUpdateConfig({ lights: newLights });
+                        }}
+                        className="text-white/20 hover:text-red-400 transition-colors"
+                      >
+                        <i className="fas fa-trash text-[10px]" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <span className="text-[9px] text-white/20 uppercase tracking-widest block mb-1">Color</span>
+                        <input 
+                          type="color"
+                          value={light.color}
+                          onChange={(e) => {
+                            const newLights = [...state.config.lights];
+                            newLights[index] = { ...light, color: e.target.value };
+                            onUpdateConfig({ lights: newLights });
+                          }}
+                          className="w-full h-6 bg-transparent cursor-pointer rounded overflow-hidden border border-white/10"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-white/20 uppercase tracking-widest block mb-1">Intensity</span>
+                        <input 
+                          type="number"
+                          step="0.1"
+                          value={light.intensity}
+                          onChange={(e) => {
+                            const newLights = [...state.config.lights];
+                            newLights[index] = { ...light, intensity: parseFloat(e.target.value) };
+                            onUpdateConfig({ lights: newLights });
+                          }}
+                          className="w-full h-6 bg-white/5 border border-white/10 rounded px-1 text-[10px] text-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <span className="text-[9px] text-white/20 uppercase tracking-widest block">Position</span>
+                      <div className="grid grid-cols-3 gap-1">
+                        {['X', 'Y', 'Z'].map((axis, i) => (
+                          <input 
+                            key={axis}
+                            type="number"
+                            placeholder={axis}
+                            value={light.position[i]}
+                            onChange={(e) => {
+                              const newPos = [...light.position] as [number, number, number];
+                              newPos[i] = parseFloat(e.target.value);
+                              const newLights = [...state.config.lights];
+                              newLights[index] = { ...light, position: newPos };
+                              onUpdateConfig({ lights: newLights });
+                            }}
+                            className="w-full h-6 bg-white/5 border border-white/10 rounded px-1 text-[10px] text-white"
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {light.type !== LightType.POINT && (
+                      <div className="space-y-2">
+                        <span className="text-[9px] text-white/20 uppercase tracking-widest block">Rotation</span>
+                        <div className="grid grid-cols-3 gap-1">
+                          {['X', 'Y', 'Z'].map((axis, i) => (
+                            <input 
+                              key={axis}
+                              type="number"
+                              placeholder={axis}
+                              step="0.1"
+                              value={light.rotation[i]}
+                              onChange={(e) => {
+                                const newRot = [...light.rotation] as [number, number, number];
+                                newRot[i] = parseFloat(e.target.value);
+                                const newLights = [...state.config.lights];
+                                newLights[index] = { ...light, rotation: newRot };
+                                onUpdateConfig({ lights: newLights });
+                              }}
+                              className="w-full h-6 bg-white/5 border border-white/10 rounded px-1 text-[10px] text-white"
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {light.type === LightType.SPOT && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-[9px] text-white/20 uppercase tracking-widest block mb-1">Angle</span>
+                          <input 
+                            type="number" step="0.01" value={light.angle}
+                            onChange={(e) => {
+                              const newLights = [...state.config.lights];
+                              newLights[index] = { ...light, angle: parseFloat(e.target.value) };
+                              onUpdateConfig({ lights: newLights });
+                            }}
+                            className="w-full h-6 bg-white/5 border border-white/10 rounded px-1 text-[10px] text-white"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-white/20 uppercase tracking-widest block mb-1">Penumbra</span>
+                          <input 
+                            type="number" step="0.01" value={light.penumbra}
+                            onChange={(e) => {
+                              const newLights = [...state.config.lights];
+                              newLights[index] = { ...light, penumbra: parseFloat(e.target.value) };
+                              onUpdateConfig({ lights: newLights });
+                            }}
+                            className="w-full h-6 bg-white/5 border border-white/10 rounded px-1 text-[10px] text-white"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {light.type === LightType.AREA && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-[9px] text-white/20 uppercase tracking-widest block mb-1">Width</span>
+                          <input 
+                            type="number" value={light.width}
+                            onChange={(e) => {
+                              const newLights = [...state.config.lights];
+                              newLights[index] = { ...light, width: parseFloat(e.target.value) };
+                              onUpdateConfig({ lights: newLights });
+                            }}
+                            className="w-full h-6 bg-white/5 border border-white/10 rounded px-1 text-[10px] text-white"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-white/20 uppercase tracking-widest block mb-1">Height</span>
+                          <input 
+                            type="number" value={light.height}
+                            onChange={(e) => {
+                              const newLights = [...state.config.lights];
+                              newLights[index] = { ...light, height: parseFloat(e.target.value) };
+                              onUpdateConfig({ lights: newLights });
+                            }}
+                            className="w-full h-6 bg-white/5 border border-white/10 rounded px-1 text-[10px] text-white"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </section>
 

@@ -23,6 +23,7 @@ export const DEFAULT_CONFIG: SceneConfig = {
   contrast: 0,
   hue: 0,
   brightness: 0,
+  lights: [],
 };
 
 export const HDRI_PRESETS = [

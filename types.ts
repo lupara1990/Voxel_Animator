@@ -73,6 +73,29 @@ export enum PlaybackMode {
   PING_PONG = 'PING_PONG',
 }
 
+export enum LightType {
+  SPOT = 'SPOT',
+  DIRECTIONAL = 'DIRECTIONAL',
+  POINT = 'POINT',
+  AREA = 'AREA',
+}
+
+export interface LightConfig {
+  id: string;
+  type: LightType;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  color: string;
+  intensity: number;
+  castShadow: boolean;
+  distance?: number;
+  decay?: number;
+  angle?: number;
+  penumbra?: number;
+  width?: number;
+  height?: number;
+}
+
 export interface SceneConfig {
   exposure: number;
   bloom: number;
@@ -99,6 +122,8 @@ export interface SceneConfig {
   contrast: number;
   hue: number;
   brightness: number;
+  // Dynamic Lights
+  lights: LightConfig[];
 }
 
 export interface Keyframe {

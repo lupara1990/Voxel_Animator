@@ -4,7 +4,7 @@ import { Canvas, useThree, useFrame, ThreeElements } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, ContactShadows, Environment, TransformControls } from '@react-three/drei';
 import { EffectComposer, Bloom, ToneMapping, Vignette, N8AO, HueSaturation, BrightnessContrast } from '@react-three/postprocessing';
 import * as THREE from 'three';
-import { AppState, RigPart, VoxelData, Keyframe, GizmoMode, InterpolationMode, PlaybackMode, Preset, CameraConfig, RigTemplate, SavedCamera, SceneConfig, AnimationPreset } from './types';
+import { AppState, RigPart, VoxelData, Keyframe, GizmoMode, InterpolationMode, PlaybackMode, Preset, CameraConfig, RigTemplate, SavedCamera, SceneConfig, AnimationPreset, LightType } from './types';
 import { DEFAULT_CONFIG, INITIAL_TRANSFORMS, DEFAULT_PRESETS, DEFAULT_HIERARCHIES, RIG_PARTS, TEMPLATE_PARTS, INITIAL_REST_TRANSFORMS, ANIMATION_PRESETS } from './constants';
 import { parseVoxFile, reprocessVoxels } from './services/voxParser';
 import { exportCanvasToVideo } from './services/geminiService';
@@ -16,6 +16,10 @@ import GuideModal from './components/GuideModal';
 import ExportModal from './components/ExportModal';
 import RigNodeEditor from './components/RigNodeEditor';
 import ViewSelector from './components/ViewSelector';
+
+import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib';
+
+RectAreaLightUniformsLib.init();
 
 // Fix JSX intrinsic element errors by extending the global JSX namespace.
 // This ensures that Three.js elements used in R3F (like <mesh />, <group />, etc.) 
@@ -182,6 +186,8 @@ const SceneContent: React.FC<{
         <color attach="background" args={[state.config.backgroundColor]} />
       )}
       <ambientLight intensity={0.2} />
+      
+      {/* Main Scene Lights */}
       <spotLight 
         ref={spotLightRef}
         position={state.config.lightPosition} 
@@ -198,6 +204,64 @@ const SceneContent: React.FC<{
         position={[-10, 20, 10]} 
         intensity={0.5} 
       />
+
+      {/* Dynamic Lights */}
+      {state.config.lights.map((light) => {
+        switch (light.type) {
+          case LightType.SPOT:
+            return (
+              <spotLight
+                key={light.id}
+                position={light.position}
+                rotation={light.rotation}
+                intensity={light.intensity}
+                color={light.color}
+                castShadow={light.castShadow && !performanceMode}
+                angle={light.angle || 0.3}
+                penumbra={light.penumbra || 0.5}
+                distance={light.distance || 0}
+                decay={light.decay || 2}
+              />
+            );
+          case LightType.DIRECTIONAL:
+            return (
+              <directionalLight
+                key={light.id}
+                position={light.position}
+                rotation={light.rotation}
+                intensity={light.intensity}
+                color={light.color}
+                castShadow={light.castShadow && !performanceMode}
+              />
+            );
+          case LightType.POINT:
+            return (
+              <pointLight
+                key={light.id}
+                position={light.position}
+                intensity={light.intensity}
+                color={light.color}
+                castShadow={light.castShadow && !performanceMode}
+                distance={light.distance || 0}
+                decay={light.decay || 2}
+              />
+            );
+          case LightType.AREA:
+            return (
+              <rectAreaLight
+                key={light.id}
+                position={light.position}
+                rotation={light.rotation}
+                intensity={light.intensity}
+                color={light.color}
+                width={light.width || 10}
+                height={light.height || 10}
+              />
+            );
+          default:
+            return null;
+        }
+      })}
       
       {state.config.backgroundType === 'hdri' && (
         <Environment 
