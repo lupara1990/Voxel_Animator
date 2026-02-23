@@ -631,6 +631,20 @@ const Sidebar: React.FC<SidebarProps> = ({
                       className="w-full h-1 bg-white/10 rounded-full appearance-none accent-indigo-500"
                     />
                   </div>
+
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <span className="text-[10px] text-white/40 uppercase tracking-tighter">Bloom Intensity</span>
+                      <span className="text-[10px] font-mono text-indigo-400">{state.config.bloom.toFixed(2)}</span>
+                    </div>
+                    <input 
+                      type="range" min="0" max="2" step="0.01"
+                      onMouseDown={onConfigInteractionStart}
+                      value={state.config.bloom}
+                      onChange={(e) => onUpdateConfig({ bloom: parseFloat(e.target.value) })}
+                      className="w-full h-1 bg-white/10 rounded-full appearance-none accent-indigo-500"
+                    />
+                  </div>
                 </div>
                 
                 <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 mb-4">
