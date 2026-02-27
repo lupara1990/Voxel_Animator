@@ -643,37 +643,43 @@ const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </section>
 
-            <section>
-              <div className="flex justify-between items-center mb-3">
-                <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest block">Dynamic Lights</label>
-                <div className="flex gap-1">
-                  {Object.values(LightType).map(type => (
-                    <button 
-                      key={type}
-                      onClick={() => {
-                        const newLight: LightConfig = {
-                          id: Math.random().toString(36).substr(2, 9),
-                          type: type as LightType,
-                          position: [0, 10, 0],
-                          rotation: [0, 0, 0],
-                          color: '#ffffff',
-                          intensity: 1,
-                          castShadow: true,
-                          ...(type === LightType.SPOT ? { angle: 0.3, penumbra: 0.5 } : {}),
-                          ...(type === LightType.AREA ? { width: 10, height: 10 } : {}),
-                        };
-                        onUpdateConfig({ lights: [...state.config.lights, newLight] });
-                      }}
-                      className="px-1.5 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded text-[8px] font-bold uppercase transition-all"
-                      title={`Add ${type}`}
-                    >
-                      {type.slice(0, 3)}
-                    </button>
-                  ))}
+            <section className="space-y-4">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <div className="w-1 h-4 bg-indigo-500 rounded-full" />
+                  <label className="text-[11px] font-bold text-white/40 uppercase tracking-widest">Dynamic Lights</label>
                 </div>
               </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {Object.values(LightType).map(type => (
+                  <button 
+                    key={type}
+                    onClick={() => {
+                      const newLight: LightConfig = {
+                        id: Math.random().toString(36).substr(2, 9),
+                        type: type as LightType,
+                        position: [0, 15, 0],
+                        rotation: [-Math.PI / 2, 0, 0],
+                        color: '#ffffff',
+                        intensity: 1,
+                        castShadow: true,
+                        distance: 0,
+                        decay: 2,
+                        ...(type === LightType.SPOT ? { angle: 0.3, penumbra: 0.5 } : {}),
+                        ...(type === LightType.AREA ? { width: 10, height: 10 } : {}),
+                      };
+                      onUpdateConfig({ lights: [...state.config.lights, newLight] });
+                    }}
+                    className="flex items-center justify-center gap-2 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all text-white/60 hover:text-white group"
+                  >
+                    <i className={`fas ${type === LightType.SPOT ? 'fa-video' : type === LightType.DIRECTIONAL ? 'fa-sun' : type === LightType.POINT ? 'fa-lightbulb' : 'fa-square'} text-[10px] text-indigo-400 group-hover:scale-110 transition-transform`}></i>
+                    {type}
+                  </button>
+                ))}
+              </div>
               
-              <div className="space-y-2">
+              <div className="space-y-3 pt-2">
                 {state.config.lights.map((light, index) => (
                   <div key={light.id} className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-3">
                     <div className="flex justify-between items-center">
@@ -719,6 +725,22 @@ const Sidebar: React.FC<SidebarProps> = ({
                       </div>
                     </div>
 
+                    {light.type !== LightType.AREA && (
+                      <div className="flex items-center justify-between p-2 bg-white/5 rounded-lg border border-white/5">
+                        <span className="text-[9px] text-white/40 uppercase tracking-widest">Cast Shadows</span>
+                        <button 
+                          onClick={() => {
+                            const newLights = [...state.config.lights];
+                            newLights[index] = { ...light, castShadow: !light.castShadow };
+                            onUpdateConfig({ lights: newLights });
+                          }}
+                          className={`w-8 h-4 rounded-full relative transition-colors ${light.castShadow ? 'bg-indigo-600' : 'bg-white/10'}`}
+                        >
+                          <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${light.castShadow ? 'left-4.5' : 'left-0.5'}`} />
+                        </button>
+                      </div>
+                    )}
+
                     <div className="space-y-2">
                       <span className="text-[9px] text-white/20 uppercase tracking-widest block">Position</span>
                       <div className="grid grid-cols-3 gap-1">
@@ -762,6 +784,35 @@ const Sidebar: React.FC<SidebarProps> = ({
                               className="w-full h-6 bg-white/5 border border-white/10 rounded px-1 text-[10px] text-white"
                             />
                           ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {(light.type === LightType.SPOT || light.type === LightType.POINT) && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-[9px] text-white/20 uppercase tracking-widest block mb-1">Distance</span>
+                          <input 
+                            type="number" step="1" value={light.distance || 0}
+                            onChange={(e) => {
+                              const newLights = [...state.config.lights];
+                              newLights[index] = { ...light, distance: parseFloat(e.target.value) };
+                              onUpdateConfig({ lights: newLights });
+                            }}
+                            className="w-full h-6 bg-white/5 border border-white/10 rounded px-1 text-[10px] text-white"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-white/20 uppercase tracking-widest block mb-1">Decay</span>
+                          <input 
+                            type="number" step="0.1" value={light.decay || 2}
+                            onChange={(e) => {
+                              const newLights = [...state.config.lights];
+                              newLights[index] = { ...light, decay: parseFloat(e.target.value) };
+                              onUpdateConfig({ lights: newLights });
+                            }}
+                            className="w-full h-6 bg-white/5 border border-white/10 rounded px-1 text-[10px] text-white"
+                          />
                         </div>
                       </div>
                     )}
