@@ -14,7 +14,6 @@ import Timeline from './components/Timeline';
 import Toolbar from './components/Toolbar';
 import GuideModal from './components/GuideModal';
 import ExportModal from './components/ExportModal';
-import RigNodeEditor from './components/RigNodeEditor';
 import ViewSelector from './components/ViewSelector';
 
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib';
@@ -376,7 +375,6 @@ const App: React.FC = () => {
   const cameraStateRef = useRef<CameraConfig | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [showRigEditor, setShowRigEditor] = useState(false);
   const [exportConfig, setExportConfig] = useState<{ resolution: '720p' | '1080p'; aspectRatio: '16:9' | '9:16' }>({
     resolution: '720p',
     aspectRatio: '16:9'
@@ -578,6 +576,56 @@ const App: React.FC = () => {
     });
   };
 
+  const handleAutoRig = () => {
+    if (state.voxels.length === 0) return;
+    pushHistory();
+    setState(s => {
+      const worldRestPos: Record<string, THREE.Vector3> = {};
+      
+      const computeWorldPos = (part: RigPart, parentPos: THREE.Vector3) => {
+        const rest = s.restTransforms[part];
+        const pos = new THREE.Vector3(...rest.position).add(parentPos);
+        worldRestPos[part] = pos;
+        
+        s.activeParts.forEach(p => {
+          if (s.partParents[p] === part) {
+            computeWorldPos(p, pos);
+          }
+        });
+      };
+
+      const roots = s.activeParts.filter(p => !s.partParents[p] || !s.activeParts.includes(s.partParents[p]!));
+      roots.forEach(root => computeWorldPos(root, new THREE.Vector3(0, 0, 0)));
+
+      const avgX = s.voxels.reduce((sum, v) => sum + v.x, 0) / s.voxels.length;
+      const avgY = s.voxels.reduce((sum, v) => sum + v.y, 0) / s.voxels.length;
+      const minZ = Math.min(...s.voxels.map(v => v.z));
+      const centerX = -avgX;
+      const centerY = -avgY;
+      const centerZ = -minZ;
+
+      const nextVoxels = s.voxels.map(v => {
+        let minDist = Infinity;
+        let closestPart = RigPart.BODY;
+        const vPos = new THREE.Vector3(v.x + centerX, v.z + centerZ, v.y + centerY);
+        
+        s.activeParts.forEach(part => {
+          const bonePos = worldRestPos[part];
+          if (bonePos) {
+            const dist = bonePos.distanceTo(vPos);
+            if (dist < minDist) {
+              minDist = dist;
+              closestPart = part;
+            }
+          }
+        });
+        return { ...v, part: closestPart };
+      });
+
+      return { ...s, voxels: nextVoxels };
+    });
+  };
+
   const handleSaveRigTemplate = (name: string) => {
     setState(s => ({
       ...s,
@@ -765,6 +813,7 @@ const App: React.FC = () => {
           onUpdatePartParent={(part, parent) => setState(s => ({ ...s, partParents: { ...s.partParents, [part]: parent } }))}
           onSetCurrentAsRest={handleSetCurrentAsRest}
           onResetRestPose={handleResetRestPose}
+          onAutoRig={handleAutoRig}
           onAddBone={(p) => setState(s => ({ ...s, activeParts: [...s.activeParts, p] }))}
           onRemoveBone={(p) => setState(s => ({ ...s, activeParts: s.activeParts.filter(x => x !== p) }))}
           onApplyAnimationPreset={(p) => {
@@ -812,7 +861,7 @@ const App: React.FC = () => {
           }}
           onTogglePartVisibility={togglePartVisibility}
           onTogglePartLock={togglePartLock}
-          onOpenRigEditor={() => setShowRigEditor(true)}
+          onOpenRigEditor={() => {}}
           onSaveRigTemplate={handleSaveRigTemplate}
           onLoadRigTemplate={handleLoadRigTemplate}
           onDeleteRigTemplate={handleDeleteRigTemplate}
@@ -939,17 +988,6 @@ const App: React.FC = () => {
               }));
             }
           }}
-        />
-      )}
-
-      {showRigEditor && (
-        <RigNodeEditor 
-          state={state}
-          onClose={() => setShowRigEditor(false)}
-          onUpdatePartParent={(part, parent) => setState(s => ({ ...s, partParents: { ...s.partParents, [part]: parent } }))}
-          onSelectPart={(p) => setState(s => ({ ...s, selectedPart: p }))}
-          onAddBone={(p) => setState(s => ({ ...s, activeParts: [...s.activeParts, p] }))}
-          onRemoveBone={(p) => setState(s => ({ ...s, activeParts: s.activeParts.filter(x => x !== p) }))}
         />
       )}
     </div>
