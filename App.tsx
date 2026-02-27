@@ -8,6 +8,7 @@ import { AppState, RigPart, VoxelData, Keyframe, GizmoMode, InterpolationMode, P
 import { DEFAULT_CONFIG, INITIAL_TRANSFORMS, DEFAULT_PRESETS, DEFAULT_HIERARCHIES, RIG_PARTS, TEMPLATE_PARTS, INITIAL_REST_TRANSFORMS, ANIMATION_PRESETS } from './constants';
 import { parseVoxFile, reprocessVoxels } from './services/voxParser';
 import { exportCanvasToVideo } from './services/geminiService';
+import { SAMPLE_MODELS } from './services/sampleModels';
 import VoxelModel from './components/VoxelModel';
 import Sidebar from './components/Sidebar';
 import Timeline from './components/Timeline';
@@ -576,6 +577,23 @@ const App: React.FC = () => {
     });
   };
 
+  const handleLoadSampleModel = (modelId: string) => {
+    const model = SAMPLE_MODELS.find(m => m.id === modelId);
+    if (!model) return;
+    pushHistory();
+    
+    // Reset state for the new model
+    setState(s => ({
+      ...s,
+      voxels: model.data,
+      rigTemplate: model.template as RigTemplate,
+      partParents: { ...DEFAULT_HIERARCHIES[model.template as RigTemplate] },
+      activeParts: [...TEMPLATE_PARTS[model.template as RigTemplate]],
+      selectedPart: null,
+      restTransforms: { ...INITIAL_REST_TRANSFORMS }
+    }));
+  };
+
   const handleAutoRig = () => {
     if (state.voxels.length === 0) return;
     pushHistory();
@@ -865,6 +883,7 @@ const App: React.FC = () => {
           onSaveRigTemplate={handleSaveRigTemplate}
           onLoadRigTemplate={handleLoadRigTemplate}
           onDeleteRigTemplate={handleDeleteRigTemplate}
+          onLoadSampleModel={handleLoadSampleModel}
         />
 
         <main className="flex-1 relative bg-[#050505]">

@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AppState, RigPart, GizmoMode, InterpolationMode, Preset, RigTemplate, CameraConfig, AnimationPreset, LightType, LightConfig } from '../types';
 import { TEMPLATE_PARTS, HDRI_PRESETS, RIG_PARTS, ANIMATION_PRESETS } from '../constants';
+import { SAMPLE_MODELS } from '../services/sampleModels';
 
 interface SidebarProps {
   state: AppState;
@@ -44,6 +45,7 @@ interface SidebarProps {
   onSaveRigTemplate: (name: string) => void;
   onLoadRigTemplate: (id: string) => void;
   onDeleteRigTemplate: (id: string) => void;
+  onLoadSampleModel: (modelId: string) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -54,7 +56,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onAddBone, onRemoveBone, onApplyAnimationPreset, onApplyPreset, onSavePreset,
   onSaveCamera, onUpdateCamera, onDeleteCamera, onSwitchCamera, onSaveProject, onLoadProject,
   onTogglePartVisibility, onTogglePartLock, onOpenRigEditor,
-  onSaveRigTemplate, onLoadRigTemplate, onDeleteRigTemplate
+  onSaveRigTemplate, onLoadRigTemplate, onDeleteRigTemplate,
+  onLoadSampleModel
 }) => {
   const [showAddBoneDropdown, setShowAddBoneDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -118,7 +121,22 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </div>
 
                 <div className="space-y-2 pt-2">
-                  <span className="text-[9px] text-white/20 uppercase tracking-widest block">2. Process Voxels</span>
+                  <span className="text-[9px] text-white/20 uppercase tracking-widest block">2. Load Sample Model (Optional)</span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {SAMPLE_MODELS.map(model => (
+                      <button
+                        key={model.id}
+                        onClick={() => onLoadSampleModel(model.id)}
+                        className="px-2 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all text-white/60 hover:text-white"
+                      >
+                        {model.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-2">
+                  <span className="text-[9px] text-white/20 uppercase tracking-widest block">3. Process Voxels</span>
                   <button 
                     onClick={onAutoRig}
                     className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2 group"
